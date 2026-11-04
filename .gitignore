@@ -1,6 +1,9 @@
 # Runtime information is local to each colleague.
 .oceanengine-ads/
+.tencent-ads/
 .secrets/
+private/
+tokens.json
 .env
 .env.*
 connection.json

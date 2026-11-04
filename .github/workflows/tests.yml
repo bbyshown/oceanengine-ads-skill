@@ -12,4 +12,4 @@ jobs:
           python-version: '3.11'
       - run: python -m unittest discover -s tests -v
         env:
-          PYTHONPATH: skills/oceanengine-ads/scripts
+          PYTHONPATH: skills/oceanengine-ads/scripts:skills/tencent-ads/scripts:gateway/tencent

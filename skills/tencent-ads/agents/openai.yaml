@@ -1,0 +1,4 @@
+interface:
+  display_name: "腾讯广告小游戏投放"
+  short_description: "通过已授权网关操作微信小游戏IAA与IAP广告并查询报表"
+  default_prompt: "使用 $tencent-ads 查询已授权腾讯广告账户，或执行我明确指定的微信小游戏投放调整。"

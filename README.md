@@ -1,5 +1,7 @@
 # Oceanengine Ads Skill
 
+本仓库现包含两个独立技能：[巨量引擎 oceanengine-ads](skills/oceanengine-ads/SKILL.md)与[腾讯广告 tencent-ads](skills/tencent-ads/SKILL.md)。两个平台的账户、游戏、Token和参数分别配置，安装不会继承作者生产权限。
+
 供同事安装复用的巨量引擎小游戏投放技能，含实际可运行的Python客户端、报表与只读监控。Python 3.9+，运行代码仅依赖标准库。
 
 功能覆盖查询、多账户选择、新建项目及广告、批量阶梯ROI创建、素材上传、文案修改、预算/出价/日期/时段调整、启停、切换、删除、审计与中断恢复。监控只提醒，不自动关停。
@@ -49,7 +51,17 @@ python3 "$SKILL_DIR/scripts/setup.py" doctor
 离线测试，不调用生产API：
 
 ```sh
-PYTHONPATH=skills/oceanengine-ads/scripts python3 -m unittest discover -s tests -v
+PYTHONPATH=skills/oceanengine-ads/scripts:skills/tencent-ads/scripts:gateway/tencent python3 -m unittest discover -s tests -v
 ```
 
 仓库不包含生产密钥、OAuth Token、真实账户/广告/游戏ID、服务器地址、素材、监控历史或回执；示例中的ID与网关均为虚构配置。
+
+## 腾讯广告 / 广点通
+
+将`skills/tencent-ads`整体安装到宿主技能目录；例如Codex使用`~/.codex/skills/tencent-ads`，支持本地技能导入的其他宿主可导入该目录及其脚本资源。客户端要求Python3.9+，仅使用标准库。
+
+腾讯技能需要兼容的管理网关v9、腾讯开发者应用权限及推广账户授权。客户端不直接持有腾讯OAuth凭证。现有账户尚未申请API权限时，可完成开发与预览，真实账户功能应标注待联调。详细见[腾讯接入与操作](skills/tencent-ads/references/operations.md)和[官方依据与检查清单](skills/tencent-ads/references/integration.md)。
+
+目前提供营销单元/动态创意暂停创建、修改、预算出价排期、启停删除、素材、资金及日报/小时报表接口。IAA和IAP使用各自的ROAS目标；收入字段和账户可用目标须经真实联调核定。腾讯周期监控、自动关停和账户日限额尚未开放。
+
+仓库中的[gateway/tencent](gateway/tencent/README.md)是供已有网关集成的通用附加模块，不是完整生产网关或一键自建服务。生产凭证与模板仍由各团队管理员提供。

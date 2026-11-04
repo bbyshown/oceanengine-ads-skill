@@ -1,0 +1,9 @@
+{
+  "base_url": "https://ads-gateway.example.com",
+  "key": "REPLACE_LOCALLY_WITH_ADMINISTRATOR_PROVIDED_64_HEX_KEY",
+  "access_mode": "read_only",
+  "default_account": "main",
+  "accounts": {
+    "main": {"id": "1111111111111111", "name": "示例投放账户"}
+  }
+}

@@ -1,0 +1,17 @@
+# Runtime information is local to each colleague.
+.oceanengine-ads/
+.secrets/
+.env
+.env.*
+connection.json
+monitor-policy.json
+data/
+logs/
+materials/
+*.key
+*.pem
+*.zip
+__pycache__/
+.pytest_cache/
+.venv/
+.DS_Store

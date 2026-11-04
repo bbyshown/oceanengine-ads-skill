@@ -1,0 +1,4 @@
+interface:
+  display_name: "巨量引擎游戏投放"
+  short_description: "通过已授权管理网关执行小游戏广告创建、优化、报表分析和只读监控"
+  default_prompt: "使用 $oceanengine-ads 查询已授权账户的广告表现，或执行我明确指定的投放调整。"

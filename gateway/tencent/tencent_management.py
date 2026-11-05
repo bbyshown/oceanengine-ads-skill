@@ -72,7 +72,7 @@ def execute(op, args, *, root, api=None):
         return {'code': 0, 'provider': 'tencent', 'api_version': 'v3.0', 'configured': path.exists(),
                 'authorized': (root / 'private/tencent/tokens.json').exists(), 'operations': sorted(OPS),
                 'live_account_verification': 'pending', 'create_policy': 'paused_only', 'automatic_pause': False}
-    cfg = runtime.load_config(root)
+    cfg = runtime.load_config(root, require_accounts=op != 'tencent_authorize')
     if op == 'tencent_authorize': return {'code': 0, 'data': {'authorization_url': runtime.authorize_url(root, cfg)}}
     if op in WRITES and cfg.get('write_enabled') is not True: raise runtime.Rejected('Tencent advertising writes are disabled in the server profile; complete read-only account verification first.')
     account_id = args['account_id'];account = cfg['accounts'].get(str(account_id))

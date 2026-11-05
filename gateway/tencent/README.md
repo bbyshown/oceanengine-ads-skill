@@ -6,6 +6,8 @@
 
 OAuth回调是`GET /manage/v1/tencent/oauth/callback`，以一次性state校验后交换授权码，只返回成功标志。不要在访问日志记录带授权码的查询串。状态/授权链接走受保护的任务操作，不开放凭证导出或任意Shell。
 
+私有应用使用新版管理页直接获取Token，不要求OAuth回调。所有者通过服务器本地的`stage_private_tokens`暂存、`finish_private_token_import`在生效窗口后交换一次，按实际返回的TTL安装凭证；函数不是HTTP管理操作。新Token10分钟后生效，重置作废旧Token；不确定结果停止重试。第三方应用OAuth允许先配置空accounts，账户级操作仍要求账户/微信小游戏白名单及写入开关。详情见[接入检查](../../skills/tencent-ads/references/integration.md)。
+
 Linux服务端配置文件为`<网关根目录>/private/tencent/config.json`，owner为运行服务的用户，权限0600，配置示例见下：
 
 ```json

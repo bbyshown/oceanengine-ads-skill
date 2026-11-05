@@ -189,12 +189,83 @@ class TencentTests(unittest.TestCase):
             with self.assertRaises(runtime.Rejected): runtime.callback(self.root, {'state': state, 'authorization_code': 'fake-code'})
             self.assertEqual(exchange.call_count, 1)
 
+    def test_oauth_can_complete_before_account_game_selection_without_ad_access(self):
+        from urllib.parse import urlsplit, parse_qs
+        cfg=config();cfg.update(accounts={},write_enabled=False)
+        runtime.save(self.root / 'private/tencent/config.json', cfg)
+        result=self.execute('tencent_authorize', {})
+        url=result['data']['authorization_url']
+        state=parse_qs(urlsplit(url).query)['state'][0]
+        with patch.object(runtime,'token_request',return_value={'access_token':'fake-token'}) as exchange:
+            self.assertTrue(runtime.callback(self.root,{'state':state,'authorization_code':'fake-code'})['authorized'])
+            exchange.assert_called_once()
+        with self.assertRaises(runtime.Rejected):self.execute('tencent_inventory',{'account_id':123})
+        with self.assertRaises(runtime.Rejected):self.execute('tencent_update_adgroup',{'account_id':123,'adgroup_id':11,'patch':{'daily_budget':50000}})
+        self.assertEqual(self.api.calls,[])
+
+    def test_oauth_config_still_rejects_invalid_credentials_callback_and_account_entries(self):
+        for changes in ({'client_secret':''},{'redirect_uri':'http://gateway.example.com/manage/v1/tencent/oauth/callback'},
+                        {'accounts':[]},{'accounts':{'123':None}},{'accounts':{'123':{'mini_game_ids':['tt123']}}}):
+            runtime.save(self.root / 'private/tencent/config.json',dict(config(),**changes))
+            with self.assertRaises(runtime.Rejected):runtime.load_config(self.root,require_accounts=False)
+
     def test_local_read_only_blocks_writes_before_network(self):
         file = self.root / 'gateway.json';runtime.save(file, {'base_url': 'https://gateway.example.com', 'key': 'ab' * 32, 'access_mode': 'read_only'})
         gateway = client.Gateway(file)
         with patch.object(client, 'build_opener') as network:
             with self.assertRaises(PermissionError): gateway.request('jobs', {'op': 'tencent_authorize', 'args': {}, 'idempotency_key': 'readonly-test'})
             network.assert_not_called()
+
+    def test_private_import_waits_without_network_and_never_invents_token_lifetimes(self):
+        pair={'access_token':'private-access','refresh_token':'private-refresh'}
+        ready=time.time()+600
+        result=runtime.stage_private_tokens(self.root,pair,ready)
+        self.assertNotIn('private-access',json.dumps(result))
+        self.assertTrue(runtime.stage_private_tokens(self.root,pair,ready)['already_staged'])
+        with patch.object(runtime,'token_request') as exchange:
+            self.assertEqual(runtime.finish_private_token_import(self.root)['status'],'waiting_for_activation')
+            exchange.assert_not_called()
+        self.assertFalse((self.root/'private/tencent/tokens.json').exists())
+
+    def test_private_import_refreshes_once_and_reuses_returned_lifetimes(self):
+        pair={'access_token':'private-access','refresh_token':'private-refresh'}
+        ready=time.time()+600;runtime.stage_private_tokens(self.root,pair,ready)
+        fresh={'access_token':'fresh-access','refresh_token':'fresh-refresh','received_at':ready+1,
+               'access_token_expires_in':1234,'refresh_token_expires_in':5678}
+        with patch.object(runtime.time,'time',return_value=ready+1),patch.object(runtime,'token_request',return_value=fresh) as exchange:
+            result=runtime.finish_private_token_import(self.root)
+            self.assertEqual(result['access_token_expires_in'],1234)
+            self.assertTrue(runtime.finish_private_token_import(self.root)['already_imported'])
+            self.assertEqual(exchange.call_count,1)
+            self.assertNotIn('fresh-access',json.dumps(result))
+        saved=json.loads((self.root/'private/tencent/tokens.json').read_text())
+        self.assertEqual(saved['received_at'],ready+1)
+        self.assertEqual(saved['refresh_token_expires_in'],5678)
+
+    def test_private_import_refresh_timeout_is_not_repeated(self):
+        ready=time.time()+600
+        runtime.stage_private_tokens(self.root,{'access_token':'private-access','refresh_token':'private-refresh'},ready)
+        with patch.object(runtime.time,'time',return_value=ready+1),patch.object(runtime,'token_request',side_effect=TimeoutError()) as exchange:
+            with self.assertRaises(TimeoutError):runtime.finish_private_token_import(self.root)
+            with self.assertRaises(runtime.Rejected):runtime.finish_private_token_import(self.root)
+            self.assertEqual(exchange.call_count,1)
+
+    def test_private_import_preserves_existing_identity_and_rejects_malformed_inputs(self):
+        ready=time.time()+600
+        for pair in ({'access_token':'a'}, {'access_token':'a b','refresh_token':'c'}):
+            with self.assertRaises(runtime.Rejected):runtime.stage_private_tokens(self.root,pair,ready)
+        runtime.save(self.root/'private/tencent/tokens.json',{'access_token':'existing'})
+        with self.assertRaises(runtime.Rejected):runtime.stage_private_tokens(self.root,{'access_token':'new','refresh_token':'new'},ready)
+        self.assertEqual(json.loads((self.root/'private/tencent/tokens.json').read_text())['access_token'],'existing')
+
+    def test_private_import_rejected_refresh_preserves_outcome_and_stops(self):
+        ready=time.time()+600
+        runtime.stage_private_tokens(self.root,{'access_token':'private-access','refresh_token':'private-refresh'},ready)
+        with patch.object(runtime.time,'time',return_value=ready+1),patch.object(runtime,'token_request',side_effect=runtime.Rejected('Tencent OAuth rejected: 123')) as exchange:
+            with self.assertRaises(runtime.Rejected):runtime.finish_private_token_import(self.root)
+            with self.assertRaises(runtime.Rejected):runtime.finish_private_token_import(self.root)
+            self.assertEqual(exchange.call_count,1)
+        self.assertFalse((self.root/'private/tencent/tokens.json').exists())
 
     def test_http_non_string_query_parameters_use_json_and_tokens_stay_out_of_body(self):
         from urllib.parse import urlsplit, parse_qs

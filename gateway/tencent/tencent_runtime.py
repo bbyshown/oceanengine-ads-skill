@@ -28,7 +28,7 @@ def save(path, value):
     temp.replace(path)
 
 
-def load_config(root):
+def load_config(root, *, require_accounts=True):
     path = Path(root) / 'private/tencent/config.json'
     if not path.exists(): raise Rejected('Tencent API is not configured; obtain developer permissions and account authorization first.')
     if path.stat().st_mode & 0o077: raise Rejected('Tencent configuration must have permissions 0600.')
@@ -38,9 +38,11 @@ def load_config(root):
     if url.scheme != 'https' or not url.hostname or url.username or url.query or url.fragment or url.port:
         raise Rejected('Tencent callback must be HTTPS without credentials, an explicit port, query or fragment.')
     if url.path != '/manage/v1/tencent/oauth/callback': raise Rejected('Use the installed Tencent callback path.')
-    if not isinstance(cfg.get('accounts'), dict) or not cfg['accounts']: raise Rejected('Configure Tencent account/game allowlists.')
-    for key, account in cfg['accounts'].items():
+    accounts = cfg.get('accounts', {})
+    if not isinstance(accounts, dict) or (require_accounts and not accounts): raise Rejected('Configure Tencent account/game allowlists.')
+    for key, account in accounts.items():
         if not str(key).isdigit() or int(key) <= 0: raise Rejected('Tencent account IDs must be positive integers.')
+        if not isinstance(account, dict): raise Rejected('Tencent account configuration must be an object.')
         games = account.get('mini_game_ids')
         if not isinstance(games, list) or not games or any(not isinstance(g, str) or not g.startswith('wx') for g in games):
             raise Rejected('Each Tencent account requires its authorized WeChat mini-game IDs.')
@@ -106,6 +108,71 @@ def access_token(root, cfg):
         return fresh['access_token']
 
 
+def stage_private_tokens(root, token_pair, not_before):
+    """Owner-only provisioning helper, never exposed over the management HTTP API."""
+    cfg = load_config(root, require_accounts=False)
+    if not isinstance(token_pair, dict) or set(token_pair) != {'access_token', 'refresh_token'}:
+        raise Rejected('Provide the private application token pair only.')
+    if any(not isinstance(v, str) or not v or len(v) > 4096 or any(c.isspace() for c in v)
+           for v in token_pair.values()):
+        raise Rejected('Private token input is malformed; values withheld.')
+    if type(not_before) not in (int, float) or not time.time() <= not_before <= time.time() + 3600:
+        raise Rejected('Use a future activation check within one hour.')
+    fingerprint = hashlib.sha256(json.dumps(token_pair, sort_keys=True).encode()).hexdigest()
+    with locked(root) as path:
+        if (path / 'tokens.json').exists():
+            raise Rejected('An active Tencent token file already exists; inspect it before importing another identity.')
+        file = path / 'private-token-import.json'
+        if file.exists():
+            old = json.loads(file.read_text())
+            if old.get('import_id') != fingerprint or old.get('client_id') != str(cfg['client_id']):
+                raise Rejected('A different private token import already exists; it was preserved.')
+            return {'staged': True, 'not_before': old['not_before'], 'already_staged': True}
+        save(file, dict(token_pair, import_id=fingerprint, client_id=str(cfg['client_id']),
+                        not_before=not_before, staged_at=time.time()))
+        return {'staged': True, 'not_before': not_before, 'already_staged': False}
+
+
+def finish_private_token_import(root):
+    """Exchange once after propagation, using returned lifetimes instead of guessing expiry."""
+    cfg = load_config(root, require_accounts=False)
+    with locked(root) as path:
+        file = path / 'private-token-import.json'
+        if not file.exists(): raise Rejected('No pending private token import.')
+        pending = json.loads(file.read_text())
+        if pending.get('client_id') != str(cfg['client_id']): raise Rejected('Private token import belongs to another application.')
+        active = path / 'tokens.json'
+        marker = path / 'private-token-refresh-pending.json'
+        if active.exists():
+            token = json.loads(active.read_text())
+            if token.get('private_import_id') != pending['import_id']:
+                raise Rejected('Another active Tencent identity exists; it was preserved.')
+            marker.unlink(missing_ok=True)
+            return {'imported': True, 'already_imported': True, 'received_at': token['received_at'],
+                    'access_token_expires_in': token['access_token_expires_in'],
+                    'refresh_token_expires_in': token['refresh_token_expires_in']}
+        if time.time() < pending['not_before']:
+            return {'imported': False, 'status': 'waiting_for_activation', 'not_before': pending['not_before']}
+        if marker.exists() or pending.get('refresh_attempted'):
+            raise Rejected('Private token refresh already attempted; inspect the saved outcome before another exchange.')
+        pending['refresh_attempted'] = True
+        save(file, pending)
+        save(marker, {'started_at': time.time(), 'import_id': pending['import_id']})
+        try:
+            token = token_request(cfg, {'grant_type': 'refresh_token', 'refresh_token': pending['refresh_token']})
+        except Rejected as error:
+            pending.update(status='rejected', error=str(error));save(file, pending)
+            marker.unlink();raise
+        token['private_import_id'] = pending['import_id']
+        save(active, token)
+        pending.update(status='imported', received_at=token['received_at'])
+        save(file, pending);marker.unlink()
+        (path / 'oauth-state.json').unlink(missing_ok=True)
+        return {'imported': True, 'already_imported': False, 'received_at': token['received_at'],
+                'access_token_expires_in': token['access_token_expires_in'],
+                'refresh_token_expires_in': token['refresh_token_expires_in']}
+
+
 def authorize_url(root, cfg):
     with locked(root) as path:
         state = secrets.token_urlsafe(32)
@@ -115,7 +182,7 @@ def authorize_url(root, cfg):
 
 
 def callback(root, query):
-    cfg = load_config(root)
+    cfg = load_config(root, require_accounts=False)
     if set(query) - {'state', 'authorization_code', 'error', 'error_description'}: raise Rejected('Unexpected Tencent callback fields.')
     with locked(root) as path:
         file = path / 'oauth-state.json'

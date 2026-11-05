@@ -8,7 +8,7 @@
 
 ## 安装
 
-仓库默认私有，同事先取得仓库访问权限：
+仓库已公开，同事可直接下载或克隆，无需申请仓库访问权限：
 
 ```sh
 git clone https://github.com/bbyshown/oceanengine-ads-skill.git

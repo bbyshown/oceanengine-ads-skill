@@ -4,6 +4,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import time
@@ -28,8 +29,20 @@ def save(path, value):
     temp.replace(path)
 
 
-def load_config(root, *, require_accounts=True):
-    path = Path(root) / 'private/tencent/config.json'
+def profile_name(value):
+    if not isinstance(value, str) or not re.fullmatch(r'[a-z][a-z0-9_-]{3,47}', value):
+        raise Rejected('Use a 4–48 character lowercase Tencent authorization profile ID.')
+    return value
+
+
+def directory(root, cfg=None, *, profile_id=None):
+    profile_id = profile_id or (cfg or {}).get('_profile_id')
+    base = Path(root) / 'private/tencent'
+    return base / 'profiles' / profile_name(profile_id) if profile_id else base
+
+
+def load_config(root, *, require_accounts=True, profile_id=None):
+    path = directory(root, profile_id=profile_id) / 'config.json'
     if not path.exists(): raise Rejected('Tencent API is not configured; obtain developer permissions and account authorization first.')
     if path.stat().st_mode & 0o077: raise Rejected('Tencent configuration must have permissions 0600.')
     cfg = json.loads(path.read_text())
@@ -46,7 +59,33 @@ def load_config(root, *, require_accounts=True):
         games = account.get('mini_game_ids')
         if not isinstance(games, list) or not games or any(not isinstance(g, str) or not g.startswith('wx') for g in games):
             raise Rejected('Each Tencent account requires its authorized WeChat mini-game IDs.')
+    if profile_id: cfg['_profile_id'] = profile_name(profile_id)
+    elif '_profile_id' in cfg: raise Rejected('Profile selection must be explicit.')
     return cfg
+
+
+def provision_profile(root, profile_id, *, client_id, client_secret, redirect_uri):
+    """Owner-only file provisioning; deliberately not a public gateway operation."""
+    profile_name(profile_id)
+    if (not str(client_id).isdigit() or not isinstance(client_secret, str)
+            or not 1 <= len(client_secret.encode()) <= 256 or any(c.isspace() for c in client_secret)):
+        raise Rejected('Malformed Tencent application credentials; values withheld.')
+    url = urlsplit(redirect_uri)
+    if (url.scheme != 'https' or not url.hostname or url.username or url.password or url.port
+            or url.query or url.fragment or url.path != '/manage/v1/tencent/oauth/callback'):
+        raise Rejected('Use the installed HTTPS Tencent callback URL.')
+    cfg = {'client_id': str(client_id), 'client_secret': client_secret, 'redirect_uri': redirect_uri,
+           'application_type': 'third_party', 'accounts': {}, 'write_enabled': False}
+    selected = dict(cfg, _profile_id=profile_id)
+    with locked(root, selected) as path:
+        file = path / 'config.json'
+        if file.exists():
+            old = json.loads(file.read_text())
+            if any(old.get(k) != cfg[k] for k in ('client_id', 'client_secret', 'redirect_uri')):
+                raise Rejected('Tencent profile already has different credentials; existing identity preserved.')
+        else: save(file, cfg)
+    return {'profile_id': profile_id, 'client_id': str(client_id), 'configured': True,
+            'management_enabled': False, 'write_enabled': False}
 
 
 def scrub(value, cfg, tokens=None):
@@ -78,13 +117,13 @@ def token_request(cfg, grant):
     if result.get('code') != 0: raise Rejected('Tencent OAuth rejected: ' + str(result.get('code')))
     token = result.get('data') or {}
     for field in ('access_token', 'refresh_token', 'access_token_expires_in', 'refresh_token_expires_in'):
-        if not token.get(field): raise Rejected('Tencent OAuth returned incomplete token data.')
+        if not token.get(field): raise RuntimeError('Tencent OAuth returned incomplete token data; inspect the original exchange before retrying.')
     return dict(token, received_at=time.time())
 
 
 @contextlib.contextmanager
-def locked(root):
-    path = Path(root) / 'private/tencent';path.mkdir(parents=True, exist_ok=True, mode=0o700)
+def locked(root, cfg=None):
+    path = directory(root, cfg);path.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd = os.open(path / 'oauth.lock', os.O_RDWR | os.O_CREAT, 0o600)
     with os.fdopen(fd, 'w') as f:
         fcntl.flock(f, fcntl.LOCK_EX)
@@ -92,10 +131,12 @@ def locked(root):
 
 
 def access_token(root, cfg):
-    with locked(root) as path:
+    with locked(root, cfg) as path:
         file = path / 'tokens.json'
         if not file.exists(): raise Rejected('Tencent account authorization has not completed.')
         token = json.loads(file.read_text())
+        if token.get('client_id') is not None and str(token['client_id']) != str(cfg['client_id']):
+            raise Rejected('Tencent token belongs to another application.')
         if time.time() < token['received_at'] + token['access_token_expires_in'] - 600: return token['access_token']
         marker = path / 'refresh-pending.json'
         if marker.exists(): raise Rejected('Previous Tencent token refresh is uncertain; inspect it before reauthorization.')
@@ -104,6 +145,7 @@ def access_token(root, cfg):
         try: fresh = token_request(cfg, {'grant_type': 'refresh_token', 'refresh_token': token['refresh_token']})
         except Rejected:
             marker.unlink();raise
+        fresh['client_id'] = str(cfg['client_id'])
         save(file, fresh);marker.unlink()
         return fresh['access_token']
 
@@ -174,28 +216,56 @@ def finish_private_token_import(root):
 
 
 def authorize_url(root, cfg):
-    with locked(root) as path:
-        state = secrets.token_urlsafe(32)
-        save(path / 'oauth-state.json', {'state_hash': hashlib.sha256(state.encode()).hexdigest(), 'expires_at': time.time() + 1800})
+    with locked(root, cfg) as path:
+        if (path / 'tokens.json').exists(): raise Rejected('Tencent profile is already authorized; its credentials were preserved. Use a new identity profile.')
+        file = path / 'oauth-state.json'
+        previous = json.loads(file.read_text()) if file.exists() else {}
+        if previous.get('status') in ('exchange_pending', 'uncertain'):
+            raise Rejected('Previous Tencent exchange is uncertain; inspect it before issuing another link.')
+        if previous.get('status', 'issued') == 'issued' and time.time() < previous.get('expires_at', 0):
+            raise Rejected('Tencent profile already has a live link; retrieve the original job.')
+        prefix = 'txp1_' + cfg['_profile_id'] + '.' if cfg.get('_profile_id') else ''
+        state = prefix + secrets.token_urlsafe(32)
+        save(file, {'state_hash': hashlib.sha256(state.encode()).hexdigest(), 'expires_at': time.time() + 1800,
+                    'client_id': str(cfg['client_id']), 'status': 'issued'})
     query = {'client_id': cfg['client_id'], 'redirect_uri': cfg['redirect_uri'], 'state': state}
     return 'https://developers.e.qq.com/oauth/authorize?' + urlencode(query)
 
 
 def callback(root, query):
-    cfg = load_config(root, require_accounts=False)
     if set(query) - {'state', 'authorization_code', 'error', 'error_description'}: raise Rejected('Unexpected Tencent callback fields.')
-    with locked(root) as path:
+    given = query.get('state', '')
+    profile_id = None
+    if given.startswith('txp1_'):
+        profile_id = profile_name(given[5:].split('.', 1)[0])
+        if '.' not in given: raise Rejected('Invalid Tencent profile state.')
+    cfg = load_config(root, require_accounts=False, profile_id=profile_id)
+    with locked(root, cfg) as path:
         file = path / 'oauth-state.json'
         if not file.exists(): raise Rejected('No pending Tencent authorization; request a fresh link.')
-        state = json.loads(file.read_text());given = query.get('state', '')
+        state = json.loads(file.read_text())
         digest = hashlib.sha256(given.encode()).hexdigest()
         if time.time() > state['expires_at'] or not secrets.compare_digest(digest, state['state_hash']): raise Rejected('Tencent state invalid or expired.')
-        file.unlink()  # Consume before token exchange; a failed exchange needs a fresh code.
-        if query.get('error') or not query.get('authorization_code'): raise Rejected('Tencent authorization was not granted.')
-        token = token_request(cfg, {'grant_type': 'authorization_code', 'authorization_code': query['authorization_code'], 'redirect_uri': cfg['redirect_uri']})
+        if state.get('client_id', str(cfg['client_id'])) != str(cfg['client_id']): raise Rejected('Tencent application changed after link creation.')
+        if state.get('status', 'issued') != 'issued' or (path / 'tokens.json').exists():
+            raise Rejected('Tencent state was already consumed; existing credentials were preserved.')
+        if query.get('error') or not query.get('authorization_code'):
+            state['status'] = 'denied';save(file, state)
+            raise Rejected('Tencent authorization was not granted.')
+        state['status'] = 'exchange_pending';save(file, state)
+        try:
+            token = token_request(cfg, {'grant_type': 'authorization_code', 'authorization_code': query['authorization_code'], 'redirect_uri': cfg['redirect_uri']})
+        except Rejected:
+            state['status'] = 'rejected';save(file, state);raise
+        except Exception:
+            state['status'] = 'uncertain';save(file, state);raise
+        token['client_id'] = str(cfg['client_id'])
         save(path / 'tokens.json', token)
+        state['status'] = 'authorized';save(file, state)
         (path / 'refresh-pending.json').unlink(missing_ok=True)
-    return {'authorized': True, 'provider': 'tencent', 'message': 'Authorization completed. Tokens saved on the server.'}
+    return {'authorized': True, 'provider': 'tencent', 'profile_id': profile_id,
+            'management_enabled': bool(cfg.get('accounts')),
+            'message': 'Authorization completed. Tokens saved in the selected profile; existing profiles preserved. Return to the chat to verify accounts.'}
 
 
 class API:

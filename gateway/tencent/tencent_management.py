@@ -67,19 +67,30 @@ def guard_jumps(value, game):
 
 def execute(op, args, *, root, api=None):
     validate(op, args);root = Path(root)
+    profile_id = args.get('profile_id')
     if op == 'tencent_status':
-        path = root / 'private/tencent/config.json'
+        folder = runtime.directory(root, profile_id=profile_id)
+        path = folder / 'config.json'
+        state_file = folder / 'oauth-state.json'
+        state = json.loads(state_file.read_text()) if state_file.exists() else {}
+        state_name = state.get('status', 'not_started')
+        if state_name == 'issued' and time.time() > state.get('expires_at', 0): state_name = 'expired'
+        cfg = runtime.load_config(root, require_accounts=False, profile_id=profile_id) if path.exists() else {}
         return {'code': 0, 'provider': 'tencent', 'api_version': 'v3.0', 'configured': path.exists(),
-                'authorized': (root / 'private/tencent/tokens.json').exists(), 'operations': sorted(OPS),
+                'authorized': (folder / 'tokens.json').exists(), 'operations': sorted(OPS),
+                'profile_id': profile_id, 'client_id': str(cfg['client_id']) if cfg else None,
+                'authorization_status': state_name, 'link_expires_at': state.get('expires_at'),
+                'management_enabled': bool(cfg.get('accounts')), 'managed_account_ids': sorted(cfg.get('accounts', {})),
                 'live_account_verification': 'pending', 'create_policy': 'paused_only', 'automatic_pause': False}
-    cfg = runtime.load_config(root, require_accounts=op != 'tencent_authorize')
+    cfg = runtime.load_config(root, require_accounts=op != 'tencent_authorize', profile_id=profile_id)
+    folder = runtime.directory(root, cfg)
     if op == 'tencent_authorize': return {'code': 0, 'data': {'authorization_url': runtime.authorize_url(root, cfg)}}
     if op in WRITES and cfg.get('write_enabled') is not True: raise runtime.Rejected('Tencent advertising writes are disabled in the server profile; complete read-only account verification first.')
     account_id = args['account_id'];account = cfg['accounts'].get(str(account_id))
     if account is None: raise runtime.Rejected('Tencent account is outside the configured allowlist; Oceanengine account permissions do not apply.')
     api = api or runtime.API(root, cfg)
     if op == 'tencent_history':
-        directory = root / 'private/tencent/changes'
+        directory = folder / 'changes'
         records = [json.loads(p.read_text()) for p in directory.glob('*.json')] if directory.exists() else []
         rows = sorted((r for r in records if r['account_id'] == account_id), key=lambda r: r['created_at'], reverse=True)
         return {'code': 0, 'data': {'changes': rows[:args.get('limit', 10)]}}
@@ -147,7 +158,7 @@ def execute(op, args, *, root, api=None):
         existing = all_rows(api, endpoint + '/get', {'account_id': account_id, 'fields': [key, name_key], 'is_deleted': False,
             'filtering': [{'field': name_key, 'operator': 'EQUALS', 'values': [wanted[name_key]]}]})
         if existing: raise ValueError('Tencent object name already exists; inspect it instead of creating a duplicate.')
-        for file in (root / 'private/tencent/changes').glob('*.json'):
+        for file in (folder / 'changes').glob('*.json'):
             previous = json.loads(file.read_text())
             if previous['account_id'] == account_id and previous['op'] == op and previous['desired'].get(name_key) == wanted[name_key] and previous['status'] in ('prepared', 'uncertain'):
                 raise Failure('uncertain', {'message': 'Previous creation is unresolved; do not post it again.', 'change_id': previous['id']})
@@ -163,7 +174,7 @@ def execute(op, args, *, root, api=None):
                     'filtering': [{'field': 'adgroup_id', 'operator': 'EQUALS', 'values': [str(args[key])]}]})
                 if children: raise ValueError('Delete remaining Tencent creatives before their parent.')
         wanted[key] = args[key]
-    change_id = uuid.uuid4().hex;record_path = root / 'private/tencent/changes' / (change_id + '.json')
+    change_id = uuid.uuid4().hex;record_path = folder / 'changes' / (change_id + '.json')
     record = {'id': change_id, 'op': op, 'account_id': account_id, 'created_at': time.time(), 'before': before,
               'desired': wanted, 'status': 'prepared'}
     runtime.save(record_path, record)

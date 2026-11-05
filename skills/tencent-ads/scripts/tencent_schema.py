@@ -85,6 +85,10 @@ def check_patch(patch, creative=False, create=False, monetization=None):
 
 def validate(op, args):
     if op not in OPS or not isinstance(args, dict): raise ValueError('Unknown Tencent operation.')
+    if 'profile_id' in args:
+        if not isinstance(args['profile_id'], str) or not re.fullmatch(r'[a-z][a-z0-9_-]{3,47}', args['profile_id']):
+            raise ValueError('Invalid Tencent authorization profile ID.')
+        args = {k: v for k, v in args.items() if k != 'profile_id'}
     if op in ('tencent_status', 'tencent_authorize'):
         if args: raise ValueError('This Tencent operation takes no account arguments.')
         return

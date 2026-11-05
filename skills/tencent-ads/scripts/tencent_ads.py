@@ -115,6 +115,7 @@ def run(client, steps, run_id, state=STATE):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--account', type=int, help='Explicit Tencent account ID; never an Oceanengine alias.')
+    parser.add_argument('--profile', help='Explicit isolated Tencent authorization identity.')
     parser.add_argument('--run-id');parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--config', type=Path)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -147,24 +148,26 @@ def main():
         cfg = {'base_url': args.base_url, 'key': key, 'access_mode': args.access};Gateway.validate(cfg);save(target, cfg)
         print('Tencent local gateway profile saved with0600 permissions. No advertising changed.');return
     client = Gateway(args.config)
-    if args.command == 'status': print(json.dumps(read(client, 'tencent_status', {}), ensure_ascii=False, indent=2));return
+    selection = {'profile_id': args.profile} if args.profile else {}
+    if args.command == 'status': print(json.dumps(read(client, 'tencent_status', selection), ensure_ascii=False, indent=2));return
     if args.command == 'resume':
         if not re.fullmatch('[A-Za-z0-9_-]{8,64}', args.saved_run_id): raise ValueError('Invalid saved run-id.')
         receipt = json.loads((STATE / 'operations' / args.saved_run_id / 'receipt.json').read_text())
         if args.account is not None and any(s['args'].get('account_id', args.account) != args.account for s in receipt['steps']): raise ValueError('Saved Tencent account differs.')
+        if args.profile is not None and any(s['args'].get('profile_id') != args.profile for s in receipt['steps']): raise ValueError('Saved Tencent authorization profile differs.')
         print(json.dumps(run(client, receipt['steps'], args.saved_run_id), ensure_ascii=False, indent=2));return
     if args.command != 'authorize' and args.account is None: raise ValueError('Select an explicit Tencent --account ID.')
-    account = {'account_id': args.account};command = args.command
+    account = dict(selection, account_id=args.account);command = args.command
     if command in ('inventory', 'funds', 'history', 'report', 'materials', 'conversions'):
         payload = dict(account)
         if hasattr(args, 'query_file'): payload['query'] = json.loads(args.query_file.read_text())
         if command == 'report': payload['hourly'] = args.hourly
         if command == 'materials': payload['kind'] = args.kind
         result = read(client, 'tencent_' + command, payload)
-        save(STATE / ('latest-' + command + '-' + str(args.account) + '.json'), result)
+        save(STATE / ('latest-' + command + '-' + (args.profile + '-' if args.profile else '') + str(args.account) + '.json'), result)
         print(json.dumps(result, ensure_ascii=False, indent=2));return
     steps = []
-    if command == 'authorize': op, payload = 'tencent_authorize', {}
+    if command == 'authorize': op, payload = 'tencent_authorize', dict(selection)
     elif command.startswith('new-'):
         op = 'tencent_' + command.replace('-', '_');payload = dict(account, payload=json.loads(args.args_file.read_text()))
         if command == 'new-adgroup': payload['monetization'] = args.mode
@@ -177,6 +180,7 @@ def main():
         if not isinstance(steps, list) or not 1 <= len(steps) <= 100: raise ValueError('Provide1–100 creation steps.')
         for step in steps:
             if step.get('op') not in ('tencent_new_adgroup', 'tencent_new_creative') or step['args'].get('account_id') != args.account: raise ValueError('Creation batch must stay in one explicit Tencent account.')
+            if step['args'].get('profile_id') != args.profile: raise ValueError('Creation batch must stay in one explicit Tencent authorization profile.')
     else:
         creative = command.endswith('creative') or getattr(args, 'level', '') == 'creative'
         op = 'tencent_' + ('delete_' if command == 'delete' else 'update_') + ('creative' if creative else 'adgroup')

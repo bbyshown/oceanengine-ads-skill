@@ -209,6 +209,70 @@ class TencentTests(unittest.TestCase):
             runtime.save(self.root / 'private/tencent/config.json',dict(config(),**changes))
             with self.assertRaises(runtime.Rejected):runtime.load_config(self.root,require_accounts=False)
 
+    def isolated_config(self, profile='client-team-b'):
+        runtime.provision_profile(self.root, profile, client_id='67890', client_secret='fake-second-secret',
+                                  redirect_uri=config()['redirect_uri'])
+        return runtime.load_config(self.root, profile_id=profile, require_accounts=False)
+
+    def test_profile_oauth_uses_correct_app_and_preserves_legacy_tokens(self):
+        from urllib.parse import urlsplit, parse_qs
+        legacy=self.root/'private/tencent/tokens.json';runtime.save(legacy, {'access_token':'legacy-token'})
+        before=legacy.read_bytes();cfg=self.isolated_config()
+        url=self.execute('tencent_authorize', {'profile_id':'client-team-b'})['data']['authorization_url']
+        query=parse_qs(urlsplit(url).query);state=query['state'][0]
+        self.assertEqual(query['client_id'],['67890'])
+        self.assertTrue(state.startswith('txp1_client-team-b.'))
+        with patch.object(runtime,'token_request',return_value={'access_token':'new-token'}) as exchange:
+            with self.assertRaises(runtime.Rejected):runtime.callback(self.root, {'state':state.replace('client-team-b','client-team-c'), 'authorization_code':'code'})
+            exchange.assert_not_called()
+            result=runtime.callback(self.root, {'state':state,'authorization_code':'code'})
+            self.assertEqual(result['profile_id'],'client-team-b');self.assertFalse(result['management_enabled'])
+            self.assertEqual(exchange.call_args.args[0]['client_secret'],'fake-second-secret')
+            with self.assertRaises(runtime.Rejected):runtime.callback(self.root, {'state':state,'authorization_code':'code'})
+            self.assertEqual(exchange.call_count,1)
+        self.assertEqual(legacy.read_bytes(),before)
+        self.assertTrue((runtime.directory(self.root,cfg)/'tokens.json').exists())
+        with self.assertRaises(runtime.Rejected):runtime.authorize_url(self.root,cfg)
+
+    def test_profile_oauth_uncertainty_blocks_reexchange_and_new_link(self):
+        from urllib.parse import urlsplit, parse_qs
+        cfg=self.isolated_config();state=parse_qs(urlsplit(runtime.authorize_url(self.root,cfg)).query)['state'][0]
+        with patch.object(runtime,'token_request',side_effect=TimeoutError()) as exchange:
+            with self.assertRaises(TimeoutError):runtime.callback(self.root,{'state':state,'authorization_code':'code'})
+            with self.assertRaises(runtime.Rejected):runtime.callback(self.root,{'state':state,'authorization_code':'code'})
+            with self.assertRaises(runtime.Rejected):runtime.authorize_url(self.root,cfg)
+            self.assertEqual(exchange.call_count,1)
+
+    def test_profile_auth_does_not_inherit_legacy_allowlist_or_writes(self):
+        self.isolated_config()
+        for op,args in [('tencent_inventory',{'account_id':123}),('tencent_update_adgroup',{'account_id':123,'adgroup_id':11,'patch':{'daily_budget':50000}})]:
+            with self.assertRaises(runtime.Rejected):self.execute(op,dict(args,profile_id='client-team-b'))
+        status=self.execute('tencent_status',{'profile_id':'client-team-b'})
+        self.assertEqual(status['client_id'],'67890');self.assertFalse(status['management_enabled'])
+        self.assertEqual(self.api.calls,[])
+        with self.assertRaises(runtime.Rejected):self.execute('tencent_inventory',{'profile_id':'missing-team','account_id':123})
+
+    def test_profile_token_refresh_uses_its_own_lock_and_token_file(self):
+        cfg=self.isolated_config();path=runtime.directory(self.root,cfg)/'tokens.json'
+        stale={'client_id':'67890','access_token':'old-token','refresh_token':'profile-refresh','received_at':time.time()-90000,
+               'access_token_expires_in':86400,'refresh_token_expires_in':2592000}
+        runtime.save(path,stale)
+        legacy=self.root/'private/tencent/tokens.json';runtime.save(legacy,{'access_token':'legacy-token'})
+        before=legacy.read_bytes()
+        fresh=dict(stale,received_at=time.time(),access_token='fresh-profile-token')
+        with patch.object(runtime,'token_request',return_value=fresh) as exchange:
+            self.assertEqual(runtime.access_token(self.root,cfg),'fresh-profile-token')
+            self.assertEqual(exchange.call_args.args[0]['client_id'],'67890')
+            self.assertEqual(exchange.call_args.args[1]['refresh_token'],'profile-refresh')
+        self.assertEqual(legacy.read_bytes(),before)
+
+    def test_profile_names_and_existing_credentials_cannot_be_rebound(self):
+        for bad in ('../escape','default/other','Ateam','x'):
+            with self.assertRaises(ValueError):schema.validate('tencent_authorize',{'profile_id':bad})
+        cfg=self.isolated_config();runtime.provision_profile(self.root,'client-team-b',client_id='67890',client_secret='fake-second-secret',redirect_uri=cfg['redirect_uri'])
+        with self.assertRaises(runtime.Rejected):runtime.provision_profile(self.root,'client-team-b',client_id='98765',client_secret='another',redirect_uri=cfg['redirect_uri'])
+        self.assertEqual(runtime.load_config(self.root,require_accounts=False,profile_id='client-team-b')['client_id'],'67890')
+
     def test_local_read_only_blocks_writes_before_network(self):
         file = self.root / 'gateway.json';runtime.save(file, {'base_url': 'https://gateway.example.com', 'key': 'ab' * 32, 'access_mode': 'read_only'})
         gateway = client.Gateway(file)

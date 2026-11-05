@@ -20,7 +20,7 @@ def check_alias(config, pair):
     return alias, target
 
 
-def add_account(pair, run_id, *, dry_run=False, config_path=None):
+def add_account(pair, run_id, *, dry_run=False, config_path=None,profile_id=None,game_app_id=None):
     import ads
     path = Path(config_path) if config_path else settings.config_path()
     config = settings.load(path)
@@ -30,24 +30,27 @@ def add_account(pair, run_id, *, dry_run=False, config_path=None):
     if not re.fullmatch(r'[A-Za-z0-9_-]{8,64}', run_id):
         raise ValueError('Use one stable 8–64 character run-id; reuse it after interruption.')
     client = ads.SelectedClient(settings.select_account(config=config))
-    data = ads.read('discover_accounts', client=client)['data']
+    profile_args={'profile_id':profile_id} if profile_id else {}
+    data = ads.read('discover_accounts',profile_args, client=client)['data']
     if data.get('registration_version') != 1 or not isinstance(data.get('game_app_id'), str):
         raise ValueError('Gateway does not advertise compatible account enrollment.')
+    if data.get('profile_id')!=profile_id:raise ValueError('Gateway did not select the requested authorization profile.')
+    game=game_app_id or data['game_app_id']
     if target not in {r['account_id'] for r in data['accounts']}:
         raise ValueError('Account is not authorized in this gateway workbench; complete platform authorization first.')
     plan = {'action': 'register_account', 'steps': [{'op': 'register_account', 'args': {
-        'target_account_id': target, 'game_app_id': data['game_app_id']}}]}
+        'target_account_id': target, 'game_app_id': game,**profile_args}}]}
     if dry_run: return {'status': 'preview', 'account_id': target, 'plan': plan, 'scope_changed': False}
     receipt = ads.execute_plan(plan, run_id, client=client)
     if receipt['status'] != 'done':
         return {'status': receipt['status'], 'run_id': run_id, 'local_alias_saved': False,
                 'next_step': 'Repeat the same add-account command with the same run-id.'}
     result = receipt['steps'][0]['response']['result'].get('data') or {}
-    if result.get('verified') is not True or result.get('account_id') != target or result.get('game_app_id') != data['game_app_id']:
+    if result.get('verified') is not True or result.get('account_id') != target or result.get('game_app_id') != game or result.get('profile_id')!=profile_id:
         raise ValueError('Registration readback mismatch; local configuration preserved.')
-    after = ads.read('discover_accounts', client=client)['data']
-    if after.get('game_app_id') != data['game_app_id'] or not any(
-            r.get('account_id') == target and r.get('managed') is True for r in after.get('accounts', [])):
+    after = ads.read('discover_accounts',profile_args, client=client)['data']
+    if after.get('profile_id')!=profile_id or not any(
+            r.get('account_id') == target and r.get('managed') is True and r.get('game_app_id',after.get('game_app_id'))==game for r in after.get('accounts', [])):
         raise ValueError('Account registration is not visible; reuse the same run-id after inspection.')
     if settings.load(path) != config:
         raise ValueError('Local configuration changed concurrently; repeat with the same run-id.')

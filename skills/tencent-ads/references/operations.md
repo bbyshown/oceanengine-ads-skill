@@ -19,7 +19,8 @@ HMAC管理密钥通过隐藏提示输入，或`--key-file /本地文件`读取�
 | 用途 | `tencent_ads.py`之后的参数 |
 |---|---|
 | 服务/配置状态 | `status` |
-| 生成一次性OAuth链接 | `--run-id auth-example-001 authorize` |
+| 第三方独立身份授权状态 | `--profile customer-b status` |
+| 第三方独立身份授权链接 | `--profile customer-b --run-id auth-example-001 authorize` |
 | 账户允许游戏的库存 | `--account 123 inventory` |
 | 账户资金 | `--account 123 funds` |
 | 营销单元日预算，元 | `--account 123 --run-id budget-example-001 budget 456 500` |
@@ -41,6 +42,8 @@ HMAC管理密钥通过隐藏提示输入，或`--key-file /本地文件`读取�
 | 批量暂停创建 | `--account 123 --run-id batch-example-001 batch-create --manifest /绝对路径/batch.json` |
 | 操作审计 | `--account 123 history` |
 | 超时恢复 | `resume budget-example-001`，沿用原回执，不换run-id |
+
+多授权身份的所有命令都在子命令前指定`--profile customer-b`；不传时仍使用原默认身份，不会自动合并不同身份的账户。新档案由服务器所有者预配置，生成链接需客户端operator；授权成功本身不开放广告写入。已有授权不能被新的链接覆盖，未过期链接从原run-id回执获取。交换uncertain时保留原档案排查，不重新提交授权码。
 
 写命令加`--dry-run`仅预览。客户端返回job queued/running表示尚未完成，不代表平台参数已生效。只有平台回读verified后才报告变更成功。预算修改不改变开关，启用某一层级也不会自动开启另一层级。
 

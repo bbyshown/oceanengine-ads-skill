@@ -66,7 +66,7 @@ class AccountAccessTests(unittest.TestCase):
         with patch.object(ads, 'read', side_effect=[self.discovery, self.discovery]), patch.object(ads, 'execute_plan', return_value=self.receipt):
             with self.assertRaises(ValueError): self.add()
         self.assertEqual(self.path.read_bytes(), original)
-        def read(op, client=None):
+        def read(op, args=None, client=None):
             changed = copy.deepcopy(self.cfg); changed['default_account'] = 'primary'
             setup.write_config(self.path, changed, overwrite=True)
             return self.after
@@ -118,6 +118,18 @@ class AccountAccessTests(unittest.TestCase):
             remote_client.submit('oauth_profile_status',{'profile_id':'new-team'},'profile-read-001')
         self.assertEqual(sent[0]['args'],{'profile_id':'new-team'})
         self.assertEqual(sent[1]['args'],{'profile_id':'new-team'})
+
+    def test_account_binding_carries_isolated_profile_and_explicit_game(self):
+        before=copy.deepcopy(self.discovery);before['data']['profile_id']='new-team'
+        after=copy.deepcopy(self.after);after['data']['profile_id']='new-team'
+        after['data']['accounts'][0]['game_app_id']='tt_custom_game'
+        result=copy.deepcopy(self.receipt)
+        result['steps'][0]['response']['result']['data'].update(game_app_id='tt_custom_game',profile_id='new-team')
+        with patch.object(ads,'read',side_effect=[before,after]),patch.object(ads,'execute_plan',return_value=result) as execute:
+            r=self.add(profile_id='new-team',game_app_id='tt_custom_game')
+        self.assertTrue(r['local_alias_saved'])
+        self.assertEqual(execute.call_args.args[0]['steps'][0]['args'],{
+            'target_account_id':self.target,'game_app_id':'tt_custom_game','profile_id':'new-team'})
 
 
 if __name__ == '__main__': unittest.main()

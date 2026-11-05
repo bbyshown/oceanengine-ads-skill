@@ -10,8 +10,8 @@ description: 通过已授权的巨量引擎管理网关操作小游戏广告，�
 ## 接入与范围
 
 - 首次接入或换电脑时读[接入说明](references/onboarding.md)，运行`scripts/setup.py doctor`。没有配置时先完成本地配置；不能继承仓库作者的账户、服务器或权限。
-- 添加账户时读同一接入说明的“自助添加账户”：`setup.py accounts`查看可接入账户，用户明确指定后用`setup.py add-account 别名=账户ID --run-id 唯一标识`。需要有效网关密钥、operator配置及服务端`discover_accounts/register_account`能力；登记不授予新的平台OAuth权限，不添加其他游戏或启投。中断复用原run-id，回读成功后才保存本地别名。
-- 其他授权身份接入时读接入说明的“新身份的隔离授权”，用`setup.py authorize-profile 档案ID --run-id 唯一标识`生成新链接，授权后用`authorization-status`查询。此能力仅隔离保存凭证，不自动切换工作台或开放投放；不能用旧全局回调覆盖已有账户凭证。
+- 添加账户时读同一接入说明的“自助添加账户”：`setup.py accounts`查看可接入账户，用户明确指定后用`setup.py add-account 别名=账户ID --run-id 唯一标识`。可用`--profile 档案ID --game-app-id 游戏ID`绑定独立授权和服务器已配置的游戏。需要有效网关密钥、operator配置及服务端`discover_accounts/register_account`能力；登记不授予新的平台OAuth权限，不注册任意游戏模板或启投。中断复用原run-id，回读成功后才保存本地别名。
+- 其他授权身份接入时读接入说明的“新身份的隔离授权”，用`setup.py authorize-profile 档案ID --run-id 唯一标识`生成新链接，授权后用`authorization-status`查询，再对明确账户执行带`--profile`的登记。授权确认本身不会自动扩大管理范围；不能用旧全局回调覆盖已有账户凭证。
 - 路径使用本技能绝对路径；运行目录使用用户当前业务工作区。默认状态保存在工作区`.oceanengine-ads/`，不会写入技能安装目录。可用`OCEANENGINE_ADS_HOME`指定独立状态目录。
 - 每次先确定账户别名或ID，然后读取实时库存定位项目和广告。多个账户出现相同V02等名字时，先选账户；重名或多广告不能靠猜测定位。
 - 已有参数明确且用户已授权的投放操作直接执行，不重复询问许可。金额、对象或影响范围确实不明确时先澄清缺失值。建议值、示例命令和本地operator模式均不等于用户下达了投放指令。

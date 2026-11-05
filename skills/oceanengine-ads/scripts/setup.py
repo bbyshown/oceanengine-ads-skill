@@ -25,10 +25,11 @@ def main():
     c.add_argument('--key-file',type=Path,help='Administrator-provided local key file; otherwise use a hidden terminal prompt.')
     c.add_argument('--config',type=Path,default=settings.config_path());c.add_argument('--overwrite',action='store_true')
     s.add_parser('doctor')
-    s.add_parser('accounts',help='List provider-authorized accounts and gateway registration state.')
+    s.add_parser('accounts',help='List provider-authorized accounts and gateway registration state.').add_argument('--profile')
     a=s.add_parser('add-account',help='Register an authorized account and save its local alias after readback.')
     a.add_argument('entry',help='alias=account_id');a.add_argument('--run-id',required=True)
     a.add_argument('--dry-run',action='store_true')
+    a.add_argument('--profile');a.add_argument('--game-app-id')
     a=s.add_parser('authorize-profile',help='Create a separate OAuth authorization link, without replacing current credentials.')
     a.add_argument('profile_id');a.add_argument('--run-id',required=True);a.add_argument('--dry-run',action='store_true')
     s.add_parser('authorization-status').add_argument('profile_id')
@@ -47,10 +48,10 @@ def main():
         print('Local configuration written with mode0600. No advertising settings changed.')
     elif args.command=='accounts':
         import ads
-        print(json.dumps(ads.read('discover_accounts')['data'],ensure_ascii=False,indent=2))
+        print(json.dumps(ads.read('discover_accounts',{'profile_id':args.profile} if args.profile else {})['data'],ensure_ascii=False,indent=2))
     elif args.command=='add-account':
         import account_access
-        print(json.dumps(account_access.add_account(args.entry,args.run_id,dry_run=args.dry_run),ensure_ascii=False,indent=2))
+        print(json.dumps(account_access.add_account(args.entry,args.run_id,dry_run=args.dry_run,profile_id=args.profile,game_app_id=args.game_app_id),ensure_ascii=False,indent=2))
     elif args.command=='authorize-profile':
         import account_access
         print(json.dumps(account_access.authorize_profile(args.profile_id,args.run_id,dry_run=args.dry_run),ensure_ascii=False,indent=2))

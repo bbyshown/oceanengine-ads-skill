@@ -23,3 +23,5 @@ Linux服务端配置文件为`<网关根目录>/private/tencent/config.json`，o
 ```
 
 需要身份验证的账户可在该账户配置中加入user_token；不要把实际文件或Token提交Git。服务器按需刷新Token，未配置时Tencent状态返回configured=false，不读取或修改任何巨量凭证或广告。
+
+第三方应用多客户授权：所有者在服务器本地调用`provision_profile(root, "customer-b", client_id=..., client_secret=..., redirect_uri=...)`，该函数不暴露HTTP。新配置、Token、独占锁和审计使用`private/tencent/profiles/customer-b/`，不覆盖默认私有应用。签名Tencent操作可带`profile_id`，CLI对应`--profile customer-b`；callback直接交给`runtime.callback`，它按state分流。每个新客户用独立档案，已有授权和不确定交换均禁止覆盖，账户名单须授权后另行核验配置。

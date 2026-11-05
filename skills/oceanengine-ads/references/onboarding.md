@@ -54,6 +54,21 @@ python3 "$SKILL_DIR/scripts/ads.py" --account secondary status
 
 当前单一HMAC密钥具有团队共享的管理范围，自助登记也会对同密钥使用者可见；这不是每位同事独立的账户权限。仅安装公开技能而没有密钥的人无法登记或操作。
 
+## 新身份的隔离授权
+
+其他工作台/授权身份先使用支持`oauth_profile_authorize/oauth_profile_status`的网关，创建独立授权档案：
+
+```sh
+python3 "$SKILL_DIR/scripts/setup.py" authorize-profile new-team --run-id oauth-new-team-001
+python3 "$SKILL_DIR/scripts/setup.py" authorization-status new-team
+```
+
+创建链接要求operator。档案ID为4至48位小写字母、数字、下划线或短横线，首位字母；不要使用default/primary/legacy。客户端只接收授权链接和状态，不接收平台Token。用户用目标账户的管理身份登录平台并确认授权；回调地址仍由服务端固定，不改开放平台回调配置。
+
+链接有效期从创建时起30分钟，state持久化且单次使用，不需要重启服务。任务未完成或提交结果不明时仍查原run-id；确认只是未使用链接已过期，可用新的run-id为同一未授权档案创建新链接。平台明确拒绝可查状态和错误码；交换结果uncertain必须先核查，不能盲目生成/交换。已有凭证的档案不能覆盖。不要沿用旧版服务启动日志中的全局授权链接接入其他身份。
+
+本能力仅收取、隔离保存新身份的授权；`management_enabled=false`，不自动更换现有凭证、不切换工作台或扩大账户管理范围。授权成功后仍需完成新身份账户发现、路由绑定与Token维护的联调；这些步骤没有完成前，不能宣称跨身份已可投放。私有应用的主体/客户范围等平台限制仍由平台决定，隔离档案不能绕过它们。
+
 ## 验证
 
 1. `setup.py doctor`验证HTTPS签名、所选账户、版本及可用操作，输出不含密钥。

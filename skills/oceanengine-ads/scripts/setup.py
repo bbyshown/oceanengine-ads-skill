@@ -29,6 +29,9 @@ def main():
     a=s.add_parser('add-account',help='Register an authorized account and save its local alias after readback.')
     a.add_argument('entry',help='alias=account_id');a.add_argument('--run-id',required=True)
     a.add_argument('--dry-run',action='store_true')
+    a=s.add_parser('authorize-profile',help='Create a separate OAuth authorization link, without replacing current credentials.')
+    a.add_argument('profile_id');a.add_argument('--run-id',required=True);a.add_argument('--dry-run',action='store_true')
+    s.add_parser('authorization-status').add_argument('profile_id')
     m=s.add_parser('monitor-config');m.add_argument('--account');m.add_argument('--project',required=True)
     m.add_argument('--promotion-id',type=int);m.add_argument('--overwrite',action='store_true')
     args=p.parse_args()
@@ -48,6 +51,12 @@ def main():
     elif args.command=='add-account':
         import account_access
         print(json.dumps(account_access.add_account(args.entry,args.run_id,dry_run=args.dry_run),ensure_ascii=False,indent=2))
+    elif args.command=='authorize-profile':
+        import account_access
+        print(json.dumps(account_access.authorize_profile(args.profile_id,args.run_id,dry_run=args.dry_run),ensure_ascii=False,indent=2))
+    elif args.command=='authorization-status':
+        import ads
+        print(json.dumps(ads.read('oauth_profile_status',{'profile_id':args.profile_id})['data'],ensure_ascii=False,indent=2))
     elif args.command=='monitor-config':
         import ads
         selected=settings.select_account(args.account)

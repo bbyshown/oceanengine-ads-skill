@@ -60,3 +60,22 @@ def add_account(pair, run_id, *, dry_run=False, config_path=None):
     writer.write_config(path, merged, overwrite=True)
     return {'status': 'done', 'account_id': target, 'alias': alias, 'local_alias_saved': True,
             'scope_changed': result.get('scope_changed'), 'ad_mutations_performed': False, 'run_id': run_id}
+
+
+def authorize_profile(profile_id, run_id, *, dry_run=False):
+    import ads
+    if (not isinstance(profile_id,str) or not re.fullmatch(r'[a-z][a-z0-9_-]{3,47}',profile_id)
+            or profile_id in {'default','primary','legacy'}):
+        raise ValueError('Choose a new 4–48 character lowercase profile ID.')
+    cfg=settings.load()
+    if cfg['access_mode']!='operator':raise PermissionError('Authorization link creation requires an authorized operator profile.')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{8,64}',run_id):raise ValueError('Use a stable 8–64 character run-id.')
+    client=ads.SelectedClient(settings.select_account(config=cfg))
+    plan={'action':'isolated_oauth_authorize','steps':[{'op':'oauth_profile_authorize','args':{'profile_id':profile_id}}]}
+    if dry_run:return {'status':'preview','plan':plan}
+    receipt=ads.execute_plan(plan,run_id,client=client)
+    if receipt['status']!='done':return {'status':receipt['status'],'run_id':run_id,'profile_id':profile_id}
+    data=receipt['steps'][0]['response']['result']['data']
+    if data.get('profile_id')!=profile_id or data.get('storage')!='isolated_profile' or data.get('existing_credentials_replaced') is not False:
+        raise ValueError('Gateway did not confirm isolated authorization; stop before opening the link.')
+    return dict(data,status='awaiting_user_authorization',run_id=run_id)

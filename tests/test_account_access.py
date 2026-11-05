@@ -89,5 +89,35 @@ class AccountAccessTests(unittest.TestCase):
             remote_client.submit('discover_accounts', {}, 'discovery-test-001')
         self.assertNotIn('account_id', sent[0]['args']); self.assertEqual(sent[1]['args'], {})
 
+    def test_isolated_authorization_link_does_not_modify_local_account_configuration(self):
+        data={'profile_id':'new-team','storage':'isolated_profile','existing_credentials_replaced':False,
+              'management_enabled':False,'authorization_url':'https://open.oceanengine.com/audit/oauth.html?state=example'}
+        receipt={'status':'done','steps':[{'response':{'result':{'data':data}}}]}
+        original=self.path.read_bytes()
+        with patch.object(settings,'load',return_value=self.cfg),patch.object(ads,'execute_plan',return_value=receipt) as execute:
+            r=account_access.authorize_profile('new-team','profile-test-001')
+            self.assertEqual(r['status'],'awaiting_user_authorization')
+            self.assertEqual(execute.call_args.args[0]['steps'][0]['op'],'oauth_profile_authorize')
+            execute.reset_mock()
+            self.assertEqual(account_access.authorize_profile('new-team','profile-test-001',dry_run=True)['status'],'preview')
+            execute.assert_not_called()
+            data['existing_credentials_replaced']=True
+            with self.assertRaises(ValueError):account_access.authorize_profile('new-team','profile-test-001')
+        self.assertEqual(original,self.path.read_bytes())
+
+    def test_profile_authorization_is_operator_only_and_installation_scoped(self):
+        with patch.object(settings,'load',return_value=profile()),patch.object(ads,'execute_plan') as execute:
+            with self.assertRaises(PermissionError):account_access.authorize_profile('new-team','profile-test-001')
+            execute.assert_not_called()
+        sent=[]
+        class Opener:
+            def open(self,request,timeout):
+                sent.append(json.loads(request.data));return io.BytesIO(b'{"job_id":"profile-job"}')
+        with patch.object(settings,'load',return_value=self.cfg),patch.object(remote_client,'build_opener',return_value=Opener()):
+            remote_client.submit('oauth_profile_authorize',{'profile_id':'new-team'},'profile-test-001')
+            remote_client.submit('oauth_profile_status',{'profile_id':'new-team'},'profile-read-001')
+        self.assertEqual(sent[0]['args'],{'profile_id':'new-team'})
+        self.assertEqual(sent[1]['args'],{'profile_id':'new-team'})
+
 
 if __name__ == '__main__': unittest.main()

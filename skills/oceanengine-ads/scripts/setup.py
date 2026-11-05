@@ -80,6 +80,8 @@ def main():
         if r.get('account_id')!=selected:raise ValueError('Gateway returned a different account.')
         if r.get('version',0)<8:raise ValueError('A compatible management gateway version8 or later is required.')
         print(json.dumps({'configured':True,'selected_account_id':selected,'access_mode':cfg['access_mode'],
+            'gateway':cfg['base_url'].rstrip('/'),'script_path':str(Path(__file__).resolve()),
+            'game_app_id':r.get('app_id'),'oauth_profile_id':r.get('profile_id'),
             'gateway_version':r.get('version'),'operations':r.get('operations',[])},ensure_ascii=False,indent=2))
 
 

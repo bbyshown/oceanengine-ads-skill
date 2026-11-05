@@ -179,16 +179,17 @@ def creation_plan(items, run_id, operation='new_campaign'):
     return {'action': operation, 'steps': steps, 'create_paused_only': True}
 
 
-def batch_items(rows, budget, roi=None, roi_start=None, roi_end=None, prefix=''):
+def batch_items(rows, budget, roi=None, roi_start=None, roi_end=None, prefix='', product_image_id=None):
     if not isinstance(rows, list) or not 1 <= len(rows) <= 100:raise ValueError('Manifest must contain 1–100 video rows.')
     if (roi_start is None) != (roi_end is None) or (roi is not None and roi_start is not None):raise ValueError('Choose one ROI value or a complete ROI range.')
     if roi is None and roi_start is None and any('roi_goal' not in row for row in rows):raise ValueError('Every project requires an explicit ROI coefficient.')
     output = []
     for i, row in enumerate(rows):
-        if not isinstance(row, dict) or set(row) - {'name','video_id','cover_id','titles','orientation','budget','roi_goal'}:raise ValueError('Unsupported manifest fields.')
+        if not isinstance(row, dict) or set(row) - {'name','video_id','cover_id','titles','orientation','budget','roi_goal','product_image_id'}:raise ValueError('Unsupported manifest fields.')
         goal = row.get('roi_goal', roi if roi_start is None else round(roi_start + (roi_end - roi_start) * i / max(len(rows) - 1, 1), 4))
         name = prefix + row['name']
-        ad = {k: row[k] for k in ('video_id','cover_id','titles','orientation') if k in row};ad['name'] = name + '_广告'
+        ad = {k: row[k] for k in ('video_id','cover_id','titles','orientation','product_image_id') if k in row};ad['name'] = name + '_广告'
+        if 'product_image_id' not in ad and product_image_id is not None:ad['product_image_id']=product_image_id
         output.append({'project': {'name': name, 'budget': row.get('budget', budget), 'roi_goal': goal}, 'ad': ad})
     return output
 
@@ -266,6 +267,7 @@ def main():
         s.add_argument('--product-image-id')
         s.add_argument('--title', action='append');s.add_argument('--orientation', choices=['VERTICAL','HORIZONTAL'], default='VERTICAL')
     s = sub.add_parser('batch-create');s.add_argument('--manifest', type=Path, required=True);s.add_argument('--budget', type=float, required=True)
+    s.add_argument('--product-image-id', help='Default product image for this account; each manifest row may override it.')
     s.add_argument('--roi', type=float);s.add_argument('--roi-start', type=float);s.add_argument('--roi-end', type=float);s.add_argument('--prefix', default='')
     sub.add_parser('creation-status').add_argument('creation_id')
     sub.add_parser('resume-creation').add_argument('creation_id')
@@ -298,7 +300,7 @@ def main():
                 creation.validate('resume_creation', {'creation_id': args.creation_id})
                 plan = {'action': 'resume_creation', 'steps': [{'op': 'resume_creation', 'args': {'creation_id': args.creation_id}}]}
             elif args.command == 'batch-create':
-                items = batch_items(json.loads(args.manifest.read_text()), args.budget, args.roi, args.roi_start, args.roi_end, args.prefix)
+                items = batch_items(json.loads(args.manifest.read_text()), args.budget, args.roi, args.roi_start, args.roi_end, args.prefix, args.product_image_id)
                 plan = creation_plan(items, run_id)
             else:
                 item = {}

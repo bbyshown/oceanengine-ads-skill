@@ -122,5 +122,16 @@ class AdsTests(unittest.TestCase):
         items[-1]['project']['roi_goal'] = 0.12345
         with self.assertRaises(ValueError): ads.creation_plan(items, 'new-ladder-request')
 
+    def test_batch_product_image_defaults_overrides_and_full_validation(self):
+        rows=[{'name':'one','video_id':'video-one','cover_id':'cover-one'},
+              {'name':'two','video_id':'video-two','cover_id':'cover-two','product_image_id':'account-image-two'}]
+        before=copy.deepcopy(rows)
+        items=ads.batch_items(rows,300,roi_start=.5,roi_end=.6,product_image_id='account-image-default')
+        plan=ads.creation_plan(items,'batch-image-test')
+        self.assertEqual([s['args']['ad']['product_image_id'] for s in plan['steps']],['account-image-default','account-image-two'])
+        self.assertEqual(rows,before);self.assertTrue(plan['create_paused_only'])
+        items[-1]['ad']['product_image_id']=''
+        with self.assertRaises(ValueError):ads.creation_plan(items,'batch-image-test')
+
 
 if __name__ == '__main__':unittest.main()

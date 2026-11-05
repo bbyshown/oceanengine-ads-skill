@@ -47,7 +47,8 @@ python3 "$S/scripts/ads.py" --account main --run-id req-ad-001 \
 
 python3 "$S/scripts/ads.py" --account main --run-id req-batch-001 \
   batch-create --manifest /绝对路径/videos.json --budget 300 \
-  --roi-start 0.4 --roi-end 0.5 --prefix AI_新批次_
+  --roi-start 0.4 --roi-end 0.5 --prefix AI_新批次_ \
+  --product-image-id <目标账户已上传的108x108产品图ID>
 ```
 
 新建默认暂停，男性定向只传平台支持的性别字段；UBMAX场景不能盲加`audience_extend=OFF`，应回读实际限制。向运行中项目新增广告时，父项目开关保留，新广告暂停。`--title`可重复以指定文案；默认竖版，横版用`--orientation HORIZONTAL`。
@@ -61,7 +62,7 @@ python3 "$S/scripts/ads.py" --account main --run-id req-batch-001 \
 ]
 ```
 
-统一系数用`--roi 0.4`替代范围；每行可显式给`budget`和`roi_goal`。整批输入先校验，再逐条创建。`creation-status <creation_id>`查看阶段记录；明确平台拒绝后修正配置，用新请求run-id调用`resume-creation <原creation_id>`，不通过换creation_id绕过不确定写入。
+统一系数用`--roi 0.4`替代范围；每行可显式给`budget`、`roi_goal`和`product_image_id`；逐行主图优先于`--product-image-id`，未指定时才沿用服务端模板。新账户不要默认复用其他账户的模板图片ID。整批输入先校验，再逐条创建。`creation-status <creation_id>`查看阶段记录；明确平台拒绝后修正配置，用新请求run-id调用`resume-creation <原creation_id>`，不通过换creation_id绕过不确定写入。
 
 ## 修改文案
 

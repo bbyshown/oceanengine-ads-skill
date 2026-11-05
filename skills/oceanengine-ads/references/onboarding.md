@@ -12,7 +12,7 @@
 
 运行`setup.py configure --help`查看参数。在本机终端隐藏输入管理密钥，或指定管理员提供的本地`--key-file`；不要把密钥粘到聊天、截图、命令行值或Git仓库。
 
-`--account alias=ID`可以重复，`--default-account`必须指向其中一个别名。所有请求都会携带明确的账户ID，包括默认账户。不同账户中的相同项目名不会被合并。
+`--account alias=ID`可以重复，`--default-account`必须指向其中一个别名。广告业务请求携带明确的账户ID，包括默认账户；账户发现/登记为安装级签名操作，目标用`target_account_id`单独传递，首次接入时也可调用。不同账户中的相同项目名不会被合并。
 
 `--access read_only`为默认值。只有具备实际操作授权的人员才配置`--access operator`。已有配置不会被隐式覆盖，确认用途后才使用`--overwrite`。
 
@@ -24,6 +24,35 @@
 | `OCEANENGINE_ADS_HOME` | 该业务工作区的私有状态目录；默认当前目录`.oceanengine-ads/` |
 
 示例结构见[connection.example.json](connection.example.json)。其中网关、ID和密钥占位符必须由管理员的实际本地配置替换，不能直接用示例发投放请求。
+
+## 自助添加账户
+
+兼容网关提供`discover_accounts`和`register_account`后，持有团队有效管理密钥的授权同事无需请管理员修改服务端代码。先查看平台当前授权身份下可见的账户及其登记状态，再按用户明确指定添加：
+
+```sh
+python3 "$SKILL_DIR/scripts/setup.py" accounts
+python3 "$SKILL_DIR/scripts/setup.py" add-account secondary=2222222222222222 --run-id enroll-secondary-001 --dry-run
+python3 "$SKILL_DIR/scripts/setup.py" add-account secondary=2222222222222222 --run-id enroll-secondary-001
+python3 "$SKILL_DIR/scripts/ads.py" --account secondary status
+```
+
+`add-account`要求本地`operator`模式。预览不改登记或本地配置。执行会实时核验目标属于服务器当前授权工作台、可访问服务器配置的游戏及广告查询API，再持久保存登记；回读确认后合并本地别名，保留管理密钥、默认账户及其他别名。不会自动创建资产/项目/广告、导入既有项目管理范围、改预算或启投。新账户创建广告时仍需对应游戏资产与素材。
+
+同一命令中断或任务仍在运行，重复使用原run-id查原job；明确拒绝/uncertain先检查回执，不能换新标识盲重试。客户端不会在未核验时把账户加入本地配置。安装级job仍要求HMAC签名，并使用已有审计与幂等机制。
+
+签名请求格式（不是匿名注册接口）：
+
+```json
+{"op":"discover_accounts","args":{},"idempotency_key":"discover-accounts-001"}
+```
+
+```json
+{"op":"register_account","args":{"target_account_id":2222222222222222,"game_app_id":"tt_gateway_configured_game"},"idempotency_key":"enroll-secondary-001"}
+```
+
+游戏ID必须使用发现接口返回的`game_app_id`。客户端不能指定新的工作台、游戏模板、服务端文件或Token。不同OAuth身份的账户必须先完成平台授权；腾讯广告的私有应用限制与多身份凭证隔离不能用此巨量接口绕过。旧网关不提供这两个操作时，先由网关维护者升级，不能只改客户端白名单。
+
+当前单一HMAC密钥具有团队共享的管理范围，自助登记也会对同密钥使用者可见；这不是每位同事独立的账户权限。仅安装公开技能而没有密钥的人无法登记或操作。
 
 ## 验证
 

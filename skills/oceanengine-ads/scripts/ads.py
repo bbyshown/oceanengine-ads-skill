@@ -220,7 +220,7 @@ def execute_plan(plan, run_id, *, directory=RUNS, client=None):
         if row['status'] != 'done' or result.get('code', 0) != 0:
             raise RuntimeError('Operation stopped; inspect ' + str(path) + ' before any new write.')
         if step.get('checks'):verify_inventory(result['data'], step['checks'])
-        if step['op'].startswith(('set_', 'delete_', 'new_')) or step['op'] in ('update_ad', 'resume_creation'):
+        if step['op'].startswith(('set_', 'delete_', 'new_')) or step['op'] in ('update_ad', 'resume_creation', 'register_account'):
             if not (result.get('data') or {}).get('verified'):raise RuntimeError('Write lacks verified readback; stop.')
         entry['verified'] = True;save(path, receipt)
     receipt['status'] = 'done';save(path, receipt)

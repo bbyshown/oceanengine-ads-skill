@@ -10,12 +10,12 @@ import settings
 
 READS={'status','inventory','accounts','workbench','projects','promotions','avatar','game_links',
        'report_config','report','cover','aweme_auth','goals','deep_bid','account_preflight',
-       'account_budget','change_history','creation_status'}
+       'account_budget','change_history','creation_status','discover_accounts'}
 WRITES={'new_project','new_ad','new_campaign','resume_creation','create_paused_ad','update_paused_ad',
         'set_project_status','set_ad_status','set_project_budget','set_ad_budget','set_account_budget',
         'set_project_bid','set_ad_bid','set_project_schedule','set_ad_schedule','set_project_dates',
         'update_ad','delete_ads','delete_projects','upload_image','upload_video','upload_avatar',
-        'submit_avatar','set_click_tracking','ensure_game_asset','ensure_game_events'}
+        'submit_avatar','set_click_tracking','ensure_game_asset','ensure_game_events','register_account'}
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -31,7 +31,11 @@ def request(route,payload):
             raise PermissionError('Local profile is read_only. An authorized administrator must configure operator access for edits.')
         if not isinstance(payload['args'],dict):raise ValueError('Operation args must be an object.')
         args=dict(payload['args']);selected=settings.select_account(args.get('account_id'),cfg)
-        args['account_id']=selected;payload=dict(payload,args=args)
+        if payload['op'] in {'discover_accounts','register_account'}:
+            # Installation-level enrollment must work before the first account is selected server-side.
+            args.pop('account_id',None)
+        else:args['account_id']=selected
+        payload=dict(payload,args=args)
     elif set(payload)!={'job_id'}:raise ValueError('Use job_id only.')
     path='/manage/v1/'+route
     body=json.dumps(payload,ensure_ascii=False,separators=(',',':')).encode()

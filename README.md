@@ -41,6 +41,8 @@ python3 "$SKILL_DIR/scripts/setup.py" doctor
 
 当前生产网关及OAuth服务需要由管理员维护。接入其他账户或游戏时，服务端也必须完成对应授权和模板配置；仅更改客户端账户别名不能扩大平台权限。
 
+兼容网关支持自助账户登记后，授权同事可运行`setup.py accounts`，再用`setup.py add-account 别名=账户ID --run-id 唯一标识`添加已获平台授权、使用现有游戏模板的账户，无需修改或重启网关。需要有效管理密钥和operator配置；仅安装技能不会获得权限。详见[接入说明](skills/oceanengine-ads/references/onboarding.md#自助添加账户)。
+
 ## 文档与验证
 
 - [技能入口](skills/oceanengine-ads/SKILL.md)

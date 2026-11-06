@@ -327,7 +327,8 @@ def main():
             else:
                 raw = args.file.read_bytes();limit = 50 * 1024 * 1024 if args.kind == 'video' else 5 * 1024 * 1024
                 if not raw or len(raw) > limit:raise ValueError('Upload file exceeds provider limit.')
-                op, payload = 'upload_' + args.kind, {'filename': 'asset' + args.file.suffix.lower(), 'base64': base64.b64encode(raw).decode()}
+                filename = args.file.name if args.kind == 'video' else 'asset' + args.file.suffix.lower()
+                op, payload = 'upload_' + args.kind, {'filename': filename, 'base64': base64.b64encode(raw).decode()}
             plan = {'action': args.command, 'steps': [{'op': op, 'args': payload}]}
         else:
             inv = read('inventory')['data'];refs = getattr(args, 'projects', None) or ([args.project] if hasattr(args, 'project') else [])

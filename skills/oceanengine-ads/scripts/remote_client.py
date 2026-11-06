@@ -39,7 +39,7 @@ def request(route,payload):
     elif set(payload)!={'job_id'}:raise ValueError('Use job_id only.')
     path='/manage/v1/'+route
     body=json.dumps(payload,ensure_ascii=False,separators=(',',':')).encode()
-    if len(body)>72*1024*1024:raise ValueError('Request exceeds the gateway size limit.')
+    if len(body) > 140 * 1024 * 1024:raise ValueError('Request exceeds the 140 MiB gateway body limit.')
     stamp,nonce=str(int(time.time())),uuid.uuid4().hex
     message=('POST\n'+path+'\n'+stamp+'\n'+nonce+'\n'+hashlib.sha256(body).hexdigest()).encode()
     signature=hmac.new(bytes.fromhex(cfg['key']),message,hashlib.sha256).hexdigest()

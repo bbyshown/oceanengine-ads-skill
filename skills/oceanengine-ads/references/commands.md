@@ -29,7 +29,7 @@ python3 "$S/scripts/ads.py" --help
 | 查询审计 | `--account main history --limit 10` |
 | 恢复原操作 | `resume req-edit-001`，自动恢复原账户；显式指定错误账户会拒绝 |
 
-巨量视频上传上限为 100 MiB，普通图片为 5 MiB。上传大视频前，用 `setup.py doctor` 检查网关的 `max_video_upload_bytes`（新版为 104857600）。文件超出网关报告的上限时，需先升级网关。ROI/预算范围同样受平台业务模式约束；UBMAX在项目层调整ROI，不把它当CPC出价。
+巨量视频上传上限为 100 MiB，普通图片为 5 MiB。新版客户端支持 140 MiB 请求体，视频和普通图片上传保留本地原文件名，支持可打印的 UTF-8 文件名。上传大视频前，用 `setup.py doctor` 检查网关的 `max_video_upload_bytes`（新版为 104857600）。文件超出网关报告的上限时，需先升级网关。ROI/预算范围同样受平台业务模式约束；UBMAX在项目层调整ROI，不把它当CPC出价。
 
 新建单图广告时，`new-ad` 或 `new-campaign` 可用 `--images-file /绝对路径/images.json`。批量清单逐行填写 `image_material_list`。每条图像素材需要版式和一张已上传到目标账户的图片，最多 10 条。以下为竖图请求。
 

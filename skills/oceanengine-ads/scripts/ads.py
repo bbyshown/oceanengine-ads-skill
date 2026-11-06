@@ -347,7 +347,7 @@ def main():
                     raw = source.read(limit + 1)
                 if not raw or len(raw) > limit:
                     raise ValueError(f'Upload file must be non-empty and at most {limit_mib} MiB.')
-                filename = args.file.name if args.kind == 'video' else 'asset' + args.file.suffix.lower()
+                filename = args.file.name if args.kind in ('video', 'image') else 'asset' + args.file.suffix.lower()
                 op, payload = 'upload_' + args.kind, {'filename': filename, 'base64': base64.b64encode(raw).decode()}
             plan = {'action': args.command, 'steps': [{'op': op, 'args': payload}]}
         else:

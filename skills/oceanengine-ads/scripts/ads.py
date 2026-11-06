@@ -330,7 +330,7 @@ def main():
         elif args.command in ('upload', 'report'):
             if args.command == 'report':op, payload = 'report', json.loads(args.args_file.read_text())
             else:
-                limit_mib = 60 if args.kind == 'video' else 5
+                limit_mib = 100 if args.kind == 'video' else 5
                 limit = limit_mib * 1024 * 1024
                 with args.file.open('rb') as source:
                     raw = source.read(limit + 1)

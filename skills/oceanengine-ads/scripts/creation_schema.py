@@ -49,6 +49,51 @@ def video_specs(ad):
     return videos
 
 
+def carousel_request(args):
+    if not isinstance(args, dict) or set(args) - {'images', 'audio_id', 'file_name'}:
+        raise ValueError('Carousel takes images, optional audio_id and file_name.')
+    images = args.get('images')
+    if not isinstance(images, list) or not 1 <= len(images) <= 35:
+        raise ValueError('Provide 1–35 carousel images in display order.')
+    for image in images:
+        if not isinstance(image, dict) or set(image) != {'image_id'}:
+            raise ValueError('Each carousel image requires image_id.')
+        text(image['image_id'], 256)
+    for field in ('audio_id', 'file_name'):
+        if field in args:
+            text(args[field], 256)
+
+
+def ad_materials(ad):
+    materials = {}
+    if {'video_id', 'cover_id', 'orientation', 'videos'} & ad.keys():
+        materials['video_material_list'] = video_specs(ad)
+    if 'image_material_list' in ad:
+        images = ad['image_material_list']
+        if not isinstance(images, list) or not 1 <= len(images) <= 10:
+            raise ValueError('Provide 1–10 image materials.')
+        modes = {'CREATIVE_IMAGE_MODE_SMALL', 'CREATIVE_IMAGE_MODE_LARGE', 'CREATIVE_IMAGE_MODE_LARGE_VERTICAL'}
+        for item in images:
+            if not isinstance(item, dict) or set(item) != {'image_mode', 'images'} or item['image_mode'] not in modes:
+                raise ValueError('Each image material requires a supported image_mode and images.')
+            if not isinstance(item['images'], list) or len(item['images']) != 1:
+                raise ValueError('Each image material takes exactly one image.')
+            carousel_request({'images': item['images']})
+        materials['image_material_list'] = images
+    if 'carousel_material_list' in ad:
+        carousels = ad['carousel_material_list']
+        if not isinstance(carousels, list) or not 1 <= len(carousels) <= 10:
+            raise ValueError('Provide 1–10 carousel materials.')
+        for item in carousels:
+            if (not isinstance(item, dict) or set(item) != {'carousel_id'}
+                    or not isinstance(item['carousel_id'], str) or not re.fullmatch('[1-9][0-9]{0,18}', item['carousel_id'])):
+                raise ValueError('Each carousel material requires carousel_id as a decimal string.')
+        materials['carousel_material_list'] = carousels
+    if not materials:
+        raise ValueError('Provide video, image or carousel materials.')
+    return materials
+
+
 def validate(op, args):
     if op not in OPS or not isinstance(args, dict):raise ValueError('Unknown creation operation.')
     if not re.fullmatch('[A-Za-z0-9_-]{8,80}', str(args.get('creation_id', ''))):raise ValueError('Stable creation_id required.')
@@ -66,10 +111,10 @@ def validate(op, args):
     if op == 'new_ad':ids([args['project_id']])
     if 'ad' in args:
         a = args['ad']
-        if not isinstance(a, dict) or set(a) - {'name', 'video_id', 'cover_id', 'titles', 'orientation', 'product_image_id', 'videos'} or 'name' not in a:
-            raise ValueError('Ad requires name and valid video fields.')
+        if not isinstance(a, dict) or set(a) - {'name', 'video_id', 'cover_id', 'titles', 'orientation', 'product_image_id', 'videos', 'image_material_list', 'carousel_material_list'} or 'name' not in a:
+            raise ValueError('Ad requires a name and valid material fields.')
         text(a['name'])
-        video_specs(a)
+        ad_materials(a)
         if 'product_image_id' in a:text(a['product_image_id'],256)
         if 'titles' in a:
             if not isinstance(a['titles'], list) or not 1 <= len(a['titles']) <= 10:raise ValueError('Provide 1–10 titles.')

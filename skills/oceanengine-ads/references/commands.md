@@ -31,6 +31,21 @@ python3 "$S/scripts/ads.py" --help
 
 巨量视频上传上限为 100 MiB，普通图片为 5 MiB。上传大视频前，用 `setup.py doctor` 检查网关的 `max_video_upload_bytes`（新版为 104857600）。文件超出网关报告的上限时，需先升级网关。ROI/预算范围同样受平台业务模式约束；UBMAX在项目层调整ROI，不把它当CPC出价。
 
+新建单图广告时，`new-ad` 或 `new-campaign` 可用 `--images-file /绝对路径/images.json`。批量清单逐行填写 `image_material_list`。每条图像素材需要版式和一张已上传到目标账户的图片，最多 10 条。以下为竖图请求。
+
+```json
+[{"image_mode":"CREATIVE_IMAGE_MODE_LARGE_VERTICAL","images":[{"image_id":"图片ID"}]}]
+```
+
+多图图文可以附带 BGM。先用 `upload audio /绝对路径/bgm.mp3` 上传 MP3 或 M4A（网关最多 20 MiB），取回执的 `data.audio_info.audio_id`。再将目标账户的图片 ID 按展示顺序和可选的 `audio_id` 写入请求文件，用 `create-carousel --args-file /绝对路径/carousel.json` 创建图集。
+
+```json
+{"images":[{"image_id":"图片一"},{"image_id":"图片二"}],"audio_id":"音频ID"}
+```
+
+把回执 `data.carousel.carousel_id` 转为十进制字符串，写成 `[{"carousel_id":"图集ID"}]`，用 `--carousels-file` 传给 `new-ad` 或 `new-campaign`，也可在批量清单逐行填写 `carousel_material_list`。仅用单图或图集时可省略视频参数。图文是平台白名单能力，先用 `setup.py doctor` 核对网关的 `ad_material_types`、`upload_audio` 和 `create_carousel`，再以目标账户的实际平台回执验收。以上素材操作分别使用稳定的 `--run-id`。
+
+
 上传视频时保留本地文件名，支持中文、空格和括号。名称最长 255 个字符。同一素材如果已经上传，巨量重复上传时会沿用原有名称。
 
 ## 新建与批量

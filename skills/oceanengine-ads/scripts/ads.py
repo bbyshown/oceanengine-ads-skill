@@ -185,10 +185,10 @@ def batch_items(rows, budget, roi=None, roi_start=None, roi_end=None, prefix='',
     if roi is None and roi_start is None and any('roi_goal' not in row for row in rows):raise ValueError('Every project requires an explicit ROI coefficient.')
     output = []
     for i, row in enumerate(rows):
-        if not isinstance(row, dict) or set(row) - {'name','video_id','cover_id','titles','orientation','budget','roi_goal','product_image_id','videos','roi_mode'}:raise ValueError('Unsupported manifest fields.')
+        if not isinstance(row, dict) or set(row) - {'name','video_id','cover_id','titles','orientation','budget','roi_goal','product_image_id','videos','roi_mode','image_material_list','carousel_material_list'}:raise ValueError('Unsupported manifest fields.')
         goal = row.get('roi_goal', roi if roi_start is None else round(roi_start + (roi_end - roi_start) * i / max(len(rows) - 1, 1), 4))
         name = prefix + row['name']
-        ad = {k: row[k] for k in ('video_id','cover_id','titles','orientation','product_image_id','videos') if k in row};ad['name'] = name + '_广告'
+        ad = {k: row[k] for k in ('video_id','cover_id','titles','orientation','product_image_id','videos','image_material_list','carousel_material_list') if k in row};ad['name'] = name + '_广告'
         if 'product_image_id' not in ad and product_image_id is not None:ad['product_image_id']=product_image_id
         project = {'name': name, 'budget': row.get('budget', budget), 'roi_goal': goal}
         if 'roi_mode' in row:project['roi_mode'] = row['roi_mode']
@@ -269,6 +269,8 @@ def main():
             s.add_argument('--roi-mode', choices=['7d'], help='Use 7-day IAA ROI for the new project.')
         s.add_argument('--video-id');s.add_argument('--cover-id')
         s.add_argument('--videos-file', type=Path, help='JSON array of video_id, cover_id and optional orientation.')
+        s.add_argument('--images-file', type=Path)
+        s.add_argument('--carousels-file', type=Path)
         s.add_argument('--product-image-id')
         s.add_argument('--title', action='append');s.add_argument('--orientation', choices=['VERTICAL','HORIZONTAL'])
     s = sub.add_parser('batch-create');s.add_argument('--manifest', type=Path, required=True);s.add_argument('--budget', type=float, required=True)
@@ -276,7 +278,8 @@ def main():
     s.add_argument('--roi', type=float);s.add_argument('--roi-start', type=float);s.add_argument('--roi-end', type=float);s.add_argument('--prefix', default='')
     sub.add_parser('creation-status').add_argument('creation_id')
     sub.add_parser('resume-creation').add_argument('creation_id')
-    s = sub.add_parser('upload');s.add_argument('kind', choices=['video', 'image', 'avatar']);s.add_argument('file', type=Path)
+    sub.add_parser('create-carousel').add_argument('--args-file', type=Path, required=True)
+    s = sub.add_parser('upload');s.add_argument('kind', choices=['video', 'image', 'avatar', 'audio']);s.add_argument('file', type=Path)
     s = sub.add_parser('report');s.add_argument('--args-file', type=Path, required=True)
     s = sub.add_parser('history');s.add_argument('--limit', type=int, default=10)
     sub.add_parser('resume').add_argument('saved_run_id')
@@ -318,19 +321,27 @@ def main():
                         if any(value is not None for value in (args.video_id, args.cover_id, args.orientation)):
                             parser.error('--videos-file cannot be combined with single-video flags.')
                         ad['videos'] = json.loads(args.videos_file.read_text())
-                    else:
+                    elif any(value is not None for value in (args.video_id, args.cover_id, args.orientation)):
                         ad.update(video_id=args.video_id, cover_id=args.cover_id,
                                   orientation=args.orientation or 'VERTICAL')
-                    creation.video_specs(ad)
+                    if args.images_file is not None:
+                        ad['image_material_list'] = json.loads(args.images_file.read_text())
+                    if args.carousels_file is not None:
+                        ad['carousel_material_list'] = json.loads(args.carousels_file.read_text())
                     item['ad'] = ad
                     if args.title:item['ad']['titles'] = args.title
                     if args.product_image_id:item['ad']['product_image_id']=args.product_image_id
                 if args.command == 'new-ad':item['project_id'] = resolve(read('inventory')['data'], args.project)['project_id']
                 plan = creation_plan([item], run_id, args.command.replace('-', '_'))
-        elif args.command in ('upload', 'report'):
+        elif args.command in ('upload', 'report', 'create-carousel'):
             if args.command == 'report':op, payload = 'report', json.loads(args.args_file.read_text())
+            elif args.command == 'create-carousel':
+                op, payload = 'create_carousel', json.loads(args.args_file.read_text())
+                creation.carousel_request(payload)
             else:
-                limit_mib = 100 if args.kind == 'video' else 5
+                if args.kind == 'audio' and args.file.suffix.lower() not in ('.mp3', '.m4a'):
+                    parser.error('Audio must be MP3 or M4A.')
+                limit_mib = {'video': 100, 'audio': 20}.get(args.kind, 5)
                 limit = limit_mib * 1024 * 1024
                 with args.file.open('rb') as source:
                     raw = source.read(limit + 1)

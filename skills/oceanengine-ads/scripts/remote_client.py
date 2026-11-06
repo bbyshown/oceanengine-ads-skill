@@ -14,7 +14,7 @@ READS={'status','inventory','accounts','workbench','projects','promotions','avat
 WRITES={'new_project','new_ad','new_campaign','resume_creation','create_paused_ad','update_paused_ad',
         'set_project_status','set_ad_status','set_project_budget','set_ad_budget','set_account_budget',
         'set_project_bid','set_ad_bid','set_project_schedule','set_ad_schedule','set_project_dates',
-        'update_ad','delete_ads','delete_projects','upload_image','upload_video','upload_avatar',
+        'update_ad','delete_ads','delete_projects','upload_image','upload_video','upload_avatar','upload_audio','create_carousel',
         'submit_avatar','set_click_tracking','ensure_game_asset','ensure_game_events','register_account','oauth_profile_authorize'}
 
 

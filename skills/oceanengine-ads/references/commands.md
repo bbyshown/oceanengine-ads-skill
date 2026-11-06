@@ -53,12 +53,31 @@ python3 "$S/scripts/ads.py" --account main --run-id req-batch-001 \
 
 新建默认暂停，男性定向只传平台支持的性别字段；UBMAX场景不能盲加`audience_extend=OFF`，应回读实际限制。向运行中项目新增广告时，父项目开关保留，新广告暂停。`--title`可重复以指定文案；默认竖版，横版用`--orientation HORIZONTAL`。
 
-批量清单1至100行：
+一个单元挂多条视频时，为 `new-ad` 或 `new-campaign` 传入 `--videos-file /绝对路径/videos.json`。文件是视频数组，每条提供目标账户可用的视频和封面 ID，可分别指定横竖版。
+
+```json
+[
+  {"video_id":"uploaded-video-one","cover_id":"uploaded-cover-one"},
+  {"video_id":"uploaded-video-two","cover_id":"uploaded-cover-two","orientation":"HORIZONTAL"}
+]
+```
+
+```sh
+python3 "$S/scripts/ads.py" --account main --run-id req-multi-ad-001 --dry-run \
+  new-ad V02 --name AI_V02_多素材 --videos-file /绝对路径/videos.json
+```
+
+UBMAX 小游戏项目每个单元可传 1 至 30 条不同视频。普通项目最多 10 条。数组方式的默认方向为竖版，方向写在各条记录内。`--videos-file` 与单视频参数 `--video-id`、`--cover-id`、`--orientation` 二选一。新版网关在 `capabilities` 和 `setup.py doctor` 中报告 `max_videos_per_ad`。
+
+批量清单 1 至 100 行。每行创建一个项目和一个广告单元，`videos` 数组内的素材归入同一个单元。
 
 ```json
 [
   {"name":"V21_首测","video_id":"uploaded-video-one","cover_id":"uploaded-cover-one"},
-  {"name":"V22_首测","video_id":"uploaded-video-two","cover_id":"uploaded-cover-two","titles":["准备防线迎接下一波挑战"]}
+  {"name":"V22_多素材","videos":[
+    {"video_id":"uploaded-video-two","cover_id":"uploaded-cover-two"},
+    {"video_id":"uploaded-video-three","cover_id":"uploaded-cover-three"}
+  ],"titles":["准备防线迎接下一波挑战"]}
 ]
 ```
 

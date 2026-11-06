@@ -82,6 +82,7 @@ def main():
         print(json.dumps({'configured':True,'selected_account_id':selected,'access_mode':cfg['access_mode'],
             'gateway':cfg['base_url'].rstrip('/'),'script_path':str(Path(__file__).resolve()),
             'game_app_id':r.get('app_id'),'oauth_profile_id':r.get('profile_id'),
+            'max_videos_per_ad':r.get('max_videos_per_ad', 1),
             'gateway_version':r.get('version'),'operations':r.get('operations',[])},ensure_ascii=False,indent=2))
 
 

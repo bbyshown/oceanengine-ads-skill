@@ -180,15 +180,15 @@ def creation_plan(items, run_id, operation='new_campaign'):
 
 
 def batch_items(rows, budget, roi=None, roi_start=None, roi_end=None, prefix='', product_image_id=None):
-    if not isinstance(rows, list) or not 1 <= len(rows) <= 100:raise ValueError('Manifest must contain 1–100 video rows.')
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 100:raise ValueError('Manifest must contain 1–100 ad rows.')
     if (roi_start is None) != (roi_end is None) or (roi is not None and roi_start is not None):raise ValueError('Choose one ROI value or a complete ROI range.')
     if roi is None and roi_start is None and any('roi_goal' not in row for row in rows):raise ValueError('Every project requires an explicit ROI coefficient.')
     output = []
     for i, row in enumerate(rows):
-        if not isinstance(row, dict) or set(row) - {'name','video_id','cover_id','titles','orientation','budget','roi_goal','product_image_id'}:raise ValueError('Unsupported manifest fields.')
+        if not isinstance(row, dict) or set(row) - {'name','video_id','cover_id','titles','orientation','budget','roi_goal','product_image_id','videos'}:raise ValueError('Unsupported manifest fields.')
         goal = row.get('roi_goal', roi if roi_start is None else round(roi_start + (roi_end - roi_start) * i / max(len(rows) - 1, 1), 4))
         name = prefix + row['name']
-        ad = {k: row[k] for k in ('video_id','cover_id','titles','orientation','product_image_id') if k in row};ad['name'] = name + '_广告'
+        ad = {k: row[k] for k in ('video_id','cover_id','titles','orientation','product_image_id','videos') if k in row};ad['name'] = name + '_广告'
         if 'product_image_id' not in ad and product_image_id is not None:ad['product_image_id']=product_image_id
         output.append({'project': {'name': name, 'budget': row.get('budget', budget), 'roi_goal': goal}, 'ad': ad})
     return output
@@ -263,9 +263,10 @@ def main():
         else:
             s.add_argument('--budget', type=float, required=True);s.add_argument('--roi', type=float, required=True)
             s.add_argument('--gender',choices=['male','female','all'],default='all')
-        s.add_argument('--video-id', required=True);s.add_argument('--cover-id', required=True)
+        s.add_argument('--video-id');s.add_argument('--cover-id')
+        s.add_argument('--videos-file', type=Path, help='JSON array of video_id, cover_id and optional orientation.')
         s.add_argument('--product-image-id')
-        s.add_argument('--title', action='append');s.add_argument('--orientation', choices=['VERTICAL','HORIZONTAL'], default='VERTICAL')
+        s.add_argument('--title', action='append');s.add_argument('--orientation', choices=['VERTICAL','HORIZONTAL'])
     s = sub.add_parser('batch-create');s.add_argument('--manifest', type=Path, required=True);s.add_argument('--budget', type=float, required=True)
     s.add_argument('--product-image-id', help='Default product image for this account; each manifest row may override it.')
     s.add_argument('--roi', type=float);s.add_argument('--roi-start', type=float);s.add_argument('--roi-end', type=float);s.add_argument('--prefix', default='')
@@ -307,7 +308,16 @@ def main():
                 if args.command in ('new-project','new-campaign'):item['project'] = {'name': args.name, 'budget': args.budget, 'roi_goal': args.roi}
                 if 'project' in item and args.gender!='all':item['project']['gender']='GENDER_'+args.gender.upper()
                 if args.command in ('new-ad','new-campaign'):
-                    item['ad'] = {'name': args.name if args.command == 'new-ad' else args.name + '_广告', 'video_id': args.video_id, 'cover_id': args.cover_id, 'orientation': args.orientation}
+                    ad = {'name': args.name if args.command == 'new-ad' else args.name + '_广告'}
+                    if args.videos_file is not None:
+                        if any(value is not None for value in (args.video_id, args.cover_id, args.orientation)):
+                            parser.error('--videos-file cannot be combined with single-video flags.')
+                        ad['videos'] = json.loads(args.videos_file.read_text())
+                    else:
+                        ad.update(video_id=args.video_id, cover_id=args.cover_id,
+                                  orientation=args.orientation or 'VERTICAL')
+                    creation.video_specs(ad)
+                    item['ad'] = ad
                     if args.title:item['ad']['titles'] = args.title
                     if args.product_image_id:item['ad']['product_image_id']=args.product_image_id
                 if args.command == 'new-ad':item['project_id'] = resolve(read('inventory')['data'], args.project)['project_id']

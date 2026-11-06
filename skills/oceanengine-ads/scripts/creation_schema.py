@@ -4,6 +4,9 @@ import re
 
 OPS={"new_project","new_ad","new_campaign","creation_status","resume_creation"}
 
+MAX_VIDEOS_PER_AD = 30
+
+
 def number(value, lower, upper, decimals):
     if (type(value) not in (int, float) or not math.isfinite(value) or not lower <= value <= upper
             or abs(value * 10 ** decimals - round(value * 10 ** decimals)) > 1e-5):
@@ -19,6 +22,31 @@ def ids(value):
 def text(value, limit=100):
     if not isinstance(value, str) or not 1 <= len(value) <= limit or any(ord(c) < 32 for c in value):
         raise ValueError('A non-empty text field within the length limit is required.')
+
+
+def video_specs(ad):
+    fields = {'video_id', 'cover_id', 'orientation'}
+    required = {'video_id', 'cover_id'}
+    if 'videos' in ad:
+        if fields & ad.keys():
+            raise ValueError('Use either videos or the single-video fields.')
+        videos = ad['videos']
+    else:
+        videos = [{key: ad[key] for key in fields if key in ad}]
+    if not isinstance(videos, list) or not 1 <= len(videos) <= MAX_VIDEOS_PER_AD:
+        raise ValueError(f'Provide 1–{MAX_VIDEOS_PER_AD} videos per ad.')
+    seen = set()
+    for video in videos:
+        if not isinstance(video, dict) or set(video) - fields or not required <= video.keys():
+            raise ValueError('Each video requires video_id and cover_id and accepts optional orientation.')
+        text(video['video_id'], 256)
+        text(video['cover_id'], 256)
+        if video.get('orientation', 'VERTICAL') not in ('VERTICAL', 'HORIZONTAL'):
+            raise ValueError('Unsupported video orientation.')
+        if video['video_id'] in seen:
+            raise ValueError('Video IDs must be distinct within one ad.')
+        seen.add(video['video_id'])
+    return videos
 
 
 def validate(op, args):
@@ -37,10 +65,11 @@ def validate(op, args):
     if op == 'new_ad':ids([args['project_id']])
     if 'ad' in args:
         a = args['ad']
-        if not isinstance(a, dict) or set(a) - {'name', 'video_id', 'cover_id', 'titles', 'orientation','product_image_id'} or not {'name', 'video_id', 'cover_id'} <= set(a):raise ValueError('Ad requires name, video_id and cover_id.')
-        text(a['name']);text(a['video_id'], 256);text(a['cover_id'], 256)
+        if not isinstance(a, dict) or set(a) - {'name', 'video_id', 'cover_id', 'titles', 'orientation', 'product_image_id', 'videos'} or 'name' not in a:
+            raise ValueError('Ad requires name and valid video fields.')
+        text(a['name'])
+        video_specs(a)
         if 'product_image_id' in a:text(a['product_image_id'],256)
-        if a.get('orientation', 'VERTICAL') not in ('VERTICAL', 'HORIZONTAL'):raise ValueError('Unsupported video orientation.')
         if 'titles' in a:
             if not isinstance(a['titles'], list) or not 1 <= len(a['titles']) <= 10:raise ValueError('Provide 1–10 titles.')
             for title in a['titles']:text(title, 55)

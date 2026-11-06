@@ -55,6 +55,8 @@ python3 "$S/scripts/ads.py" --account main --run-id req-batch-001 \
 
 新建默认暂停，男性定向只传平台支持的性别字段；UBMAX场景不能盲加`audience_extend=OFF`，应回读实际限制。向运行中项目新增广告时，父项目开关保留，新广告暂停。`--title`可重复以指定文案；默认竖版，横版用`--orientation HORIZONTAL`。
 
+新建字节小游戏 IAA 项目时，用 `--roi-mode 7d --roi 0.4` 明确选择「7 日变现 ROI」，适用于 `new-project` 和 `new-campaign`，批量清单逐行使用 `"roi_mode": "7d"`。请把 `0.4` 换成用户确认的系数。先用 `setup.py doctor` 查看 `project_roi_modes` 是否含 `7d`。网关按该账户的游戏事件资产查询 `deep_bid`，只有平台返回 `SEVEN_ROI_COEFFICIENT` 才提交暂停创建。创建时使用 `optimize_goal.deep_external_action=AD_CONVERT_TYPE_LTV_ROI_SEVEN`、`delivery_setting.deep_bid_type=SEVEN_ROI_COEFFICIENT`、`delivery_setting.roi_goal`；回读核对三者后才继续创建广告。省略模式沿用网关模板。已有项目的 `roi` 命令只改系数，需先读回该项目的优化目标。
+
 一个单元挂多条视频时，为 `new-ad` 或 `new-campaign` 传入 `--videos-file /绝对路径/videos.json`。文件是视频数组，每条提供目标账户可用的视频和封面 ID，可分别指定横竖版。
 
 ```json

@@ -59,8 +59,9 @@ def validate(op, args):
     if set(args) != allowed:raise ValueError('Unexpected or missing creation fields.')
     if 'project' in args:
         p = args['project']
-        if not isinstance(p, dict) or set(p) - {'name', 'budget', 'roi_goal', 'gender'} or not {'name','budget','roi_goal'} <= set(p):raise ValueError('Project takes name, budget, roi_goal and optional gender only.')
+        if not isinstance(p, dict) or set(p) - {'name', 'budget', 'roi_goal', 'gender', 'roi_mode'} or not {'name','budget','roi_goal'} <= set(p):raise ValueError('Project takes name, budget, roi_goal and optional gender and roi_mode.')
         text(p['name']);number(p['budget'], 300, 999999.99, 2);number(p['roi_goal'], .01, 5, 4)
+        if 'roi_mode' in p and p['roi_mode'] != '7d':raise ValueError('Unsupported roi_mode. Use 7d for 7-day IAA ROI.')
         if p.get('gender', 'NONE') not in ('NONE','GENDER_MALE','GENDER_FEMALE'):raise ValueError('Unsupported gender targeting.')
     if op == 'new_ad':ids([args['project_id']])
     if 'ad' in args:

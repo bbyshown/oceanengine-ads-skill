@@ -185,12 +185,14 @@ def batch_items(rows, budget, roi=None, roi_start=None, roi_end=None, prefix='',
     if roi is None and roi_start is None and any('roi_goal' not in row for row in rows):raise ValueError('Every project requires an explicit ROI coefficient.')
     output = []
     for i, row in enumerate(rows):
-        if not isinstance(row, dict) or set(row) - {'name','video_id','cover_id','titles','orientation','budget','roi_goal','product_image_id','videos'}:raise ValueError('Unsupported manifest fields.')
+        if not isinstance(row, dict) or set(row) - {'name','video_id','cover_id','titles','orientation','budget','roi_goal','product_image_id','videos','roi_mode'}:raise ValueError('Unsupported manifest fields.')
         goal = row.get('roi_goal', roi if roi_start is None else round(roi_start + (roi_end - roi_start) * i / max(len(rows) - 1, 1), 4))
         name = prefix + row['name']
         ad = {k: row[k] for k in ('video_id','cover_id','titles','orientation','product_image_id','videos') if k in row};ad['name'] = name + '_广告'
         if 'product_image_id' not in ad and product_image_id is not None:ad['product_image_id']=product_image_id
-        output.append({'project': {'name': name, 'budget': row.get('budget', budget), 'roi_goal': goal}, 'ad': ad})
+        project = {'name': name, 'budget': row.get('budget', budget), 'roi_goal': goal}
+        if 'roi_mode' in row:project['roi_mode'] = row['roi_mode']
+        output.append({'project': project, 'ad': ad})
     return output
 
 
@@ -256,6 +258,7 @@ def main():
     s = sub.add_parser('create-ad');s.add_argument('project');s.add_argument('--args-file', type=Path, required=True)
     s = sub.add_parser('new-project');s.add_argument('name');s.add_argument('--budget', type=float, required=True);s.add_argument('--roi', type=float, required=True)
     s.add_argument('--gender',choices=['male','female','all'],default='all')
+    s.add_argument('--roi-mode', choices=['7d'], help='Use 7-day IAA ROI for the new project.')
     for cmd in ('new-ad', 'new-campaign'):
         s = sub.add_parser(cmd)
         s.add_argument('project' if cmd == 'new-ad' else 'name')
@@ -263,6 +266,7 @@ def main():
         else:
             s.add_argument('--budget', type=float, required=True);s.add_argument('--roi', type=float, required=True)
             s.add_argument('--gender',choices=['male','female','all'],default='all')
+            s.add_argument('--roi-mode', choices=['7d'], help='Use 7-day IAA ROI for the new project.')
         s.add_argument('--video-id');s.add_argument('--cover-id')
         s.add_argument('--videos-file', type=Path, help='JSON array of video_id, cover_id and optional orientation.')
         s.add_argument('--product-image-id')
@@ -306,6 +310,7 @@ def main():
             else:
                 item = {}
                 if args.command in ('new-project','new-campaign'):item['project'] = {'name': args.name, 'budget': args.budget, 'roi_goal': args.roi}
+                if 'project' in item and args.roi_mode:item['project']['roi_mode'] = args.roi_mode
                 if 'project' in item and args.gender!='all':item['project']['gender']='GENDER_'+args.gender.upper()
                 if args.command in ('new-ad','new-campaign'):
                     ad = {'name': args.name if args.command == 'new-ad' else args.name + '_广告'}

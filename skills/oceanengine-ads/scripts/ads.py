@@ -330,8 +330,12 @@ def main():
         elif args.command in ('upload', 'report'):
             if args.command == 'report':op, payload = 'report', json.loads(args.args_file.read_text())
             else:
-                raw = args.file.read_bytes();limit = 50 * 1024 * 1024 if args.kind == 'video' else 5 * 1024 * 1024
-                if not raw or len(raw) > limit:raise ValueError('Upload file exceeds provider limit.')
+                limit_mib = 60 if args.kind == 'video' else 5
+                limit = limit_mib * 1024 * 1024
+                with args.file.open('rb') as source:
+                    raw = source.read(limit + 1)
+                if not raw or len(raw) > limit:
+                    raise ValueError(f'Upload file must be non-empty and at most {limit_mib} MiB.')
                 filename = args.file.name if args.kind == 'video' else 'asset' + args.file.suffix.lower()
                 op, payload = 'upload_' + args.kind, {'filename': filename, 'base64': base64.b64encode(raw).decode()}
             plan = {'action': args.command, 'steps': [{'op': op, 'args': payload}]}

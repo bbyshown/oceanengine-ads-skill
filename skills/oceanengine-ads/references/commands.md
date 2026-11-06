@@ -29,7 +29,7 @@ python3 "$S/scripts/ads.py" --help
 | 查询审计 | `--account main history --limit 10` |
 | 恢复原操作 | `resume req-edit-001`，自动恢复原账户；显式指定错误账户会拒绝 |
 
-视频上限50MiB、普通图片5MiB，以目标网关及平台的实际要求为准。ROI/预算范围同样受平台业务模式约束；UBMAX在项目层调整ROI，不把它当CPC出价。
+巨量视频上传上限为 60 MiB，普通图片为 5 MiB。上传超过 50 MiB 的视频前，用 `setup.py doctor` 检查网关的 `max_video_upload_bytes`（新版为 62914560），旧网关需升级。ROI/预算范围同样受平台业务模式约束；UBMAX在项目层调整ROI，不把它当CPC出价。
 
 上传视频时保留本地文件名，支持中文、空格和括号。名称最长 255 个字符。同一素材如果已经上传，巨量重复上传时会沿用原有名称。
 

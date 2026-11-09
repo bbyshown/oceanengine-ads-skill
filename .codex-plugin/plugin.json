@@ -1,0 +1,31 @@
+{
+  "name": "game-ads",
+  "version": "1.0.0",
+  "description": "通过团队管理网关协作管理巨量引擎和腾讯小游戏广告。",
+  "author": {
+    "name": "bbyshown"
+  },
+  "homepage": "https://github.com/bbyshown/oceanengine-ads-skill",
+  "repository": "https://github.com/bbyshown/oceanengine-ads-skill",
+  "skills": "./skills/",
+  "requires_local_executor": true,
+  "interface": {
+    "displayName": "小游戏广告投放",
+    "shortDescription": "巨量引擎与腾讯广告的创建、报表和管理",
+    "longDescription": "使用已授权的团队网关查询账户、上传素材、暂停创建广告和批量任务，管理预算与报表。需要本机 Python 3.9+ 以及团队网关连接配置。两个平台独立授权。",
+    "developerName": "bbyshown",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "brandColor": "#2563EB",
+    "composerIcon": "./assets/game-ads.svg",
+    "logo": "./assets/game-ads.svg",
+    "defaultPrompt": [
+      "查看指定账户当前广告状态",
+      "按我的预算和素材批量创建暂停广告",
+      "汇总指定广告今天的投放数据"
+    ]
+  }
+}

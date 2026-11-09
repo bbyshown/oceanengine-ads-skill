@@ -20,6 +20,17 @@ ln -s "$(pwd)/oceanengine-ads-skill/skills/oceanengine-ads" ~/.codex/skills/ocea
 
 > 使用 $oceanengine-ads 查看main账户V02昨天的数据。
 
+## Codex 插件安装
+
+使用插件入口时，添加本仓库的团队目录，再安装「小游戏广告投放」。
+
+```sh
+codex plugin marketplace add bbyshown/oceanengine-ads-skill --ref main
+codex plugin add game-ads@bbyshown-ads
+```
+
+在 Codex 插件目录选择「小游戏投放工具」来源，即可找到该插件。插件包含巨量和腾讯两个 Skill，需要本机 Python 3.9+ 和团队网关配置。公共目录上架需另行提交审核，本仓库提供团队目录安装。已用独立 Skill 安装的用户仍可沿用原入口。
+
 ## 首次连接
 
 技能依赖团队已部署、已获授权的管理网关，协议版本v8或兼容版本。服务端负责OAuth、Token刷新、账户白名单、游戏与落地页模板；本仓库是可分享的客户端技能，不附带作者的生产服务器配置或开放平台凭证。

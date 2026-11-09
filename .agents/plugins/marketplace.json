@@ -1,0 +1,21 @@
+{
+  "name": "bbyshown-ads",
+  "interface": {
+    "displayName": "小游戏投放工具"
+  },
+  "description": "团队小游戏广告协作工具。",
+  "plugins": [
+    {
+      "name": "game-ads",
+      "category": "Productivity",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      }
+    }
+  ]
+}

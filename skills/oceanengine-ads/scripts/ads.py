@@ -251,6 +251,8 @@ def main():
     s = sub.add_parser('switch');s.add_argument('source');s.add_argument('destination')
     for cmd in ('budget', 'roi'):
         s = sub.add_parser(cmd);s.add_argument('project');s.add_argument('value', type=float)
+    sub.add_parser('account-profile')
+    s = sub.add_parser('account-name');s.add_argument('--name');s.add_argument('--note')
     sub.add_parser('account-budget').add_argument('value', type=float)
     s = sub.add_parser('schedule');s.add_argument('project');s.add_argument('--mask', required=True)
     s = sub.add_parser('dates');s.add_argument('project');s.add_argument('--end');s.add_argument('--long-term', action='store_true')
@@ -289,6 +291,8 @@ def main():
     if args.command in ('status', 'list'):
         inv = read('inventory')['data'];save(ROOT / 'data/operations/latest-inventory.json', inv)
         print(json.dumps(summary(inv), ensure_ascii=False, indent=2));return
+    if args.command == 'account-profile':
+        print(json.dumps(read('account_profile'), ensure_ascii=False, indent=2));return
     if args.command == 'capabilities':print(json.dumps(read('status'), ensure_ascii=False, indent=2));return
     if args.command == 'preflight':print(json.dumps(read('account_preflight'),ensure_ascii=False,indent=2));return
     if args.command == 'history':print(json.dumps(read('change_history', {'limit': args.limit}), ensure_ascii=False, indent=2));return
@@ -301,7 +305,16 @@ def main():
             selected=saved.get('account_id',PRIMARY);CLIENT=SelectedClient(selected)
     else:
         run_id = args.run_id or time.strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:8]
-        if args.command in ('ensure-game-asset','ensure-game-events'):
+        if args.command == 'account-name':
+            payload = {key: getattr(args, key) for key in ('name', 'note') if getattr(args, key) is not None}
+            if not payload:parser.error('Provide --name and/or --note.')
+            for key, value in payload.items():
+                if not isinstance(value, str) or len(value) > 100 or any(not c.isprintable() for c in value) or (key == 'name' and not value.strip()):
+                    parser.error('Use printable account name/note up to 100 characters.')
+            before = read('account_profile')['data']
+            if not payload.keys() <= before.keys():raise ValueError('Account readback lacks requested fields.')
+            plan = {'action': 'account-name', 'steps': [{'op': 'set_account_name', 'args': payload}], 'before': before}
+        elif args.command in ('ensure-game-asset','ensure-game-events'):
             op=args.command.replace('-','_');plan={'action':op,'steps':[{'op':op,'args':{}}]}
         elif args.command in ('new-project','new-ad','new-campaign','batch-create','resume-creation'):
             if args.command == 'resume-creation':

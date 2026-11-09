@@ -10,9 +10,9 @@ import settings
 
 READS={'status','inventory','accounts','workbench','projects','promotions','avatar','game_links',
        'report_config','report','cover','aweme_auth','goals','deep_bid','account_preflight',
-       'account_budget','change_history','creation_status','discover_accounts','oauth_profile_status'}
+       'account_budget','account_profile','change_history','creation_status','discover_accounts','oauth_profile_status'}
 WRITES={'new_project','new_ad','new_campaign','resume_creation','create_paused_ad','update_paused_ad',
-        'set_project_status','set_ad_status','set_project_budget','set_ad_budget','set_account_budget',
+        'set_project_status','set_ad_status','set_project_budget','set_ad_budget','set_account_budget','set_account_name',
         'set_project_bid','set_ad_bid','set_project_schedule','set_ad_schedule','set_project_dates',
         'update_ad','delete_ads','delete_projects','upload_image','upload_video','upload_avatar','upload_audio','create_carousel',
         'submit_avatar','set_click_tracking','ensure_game_asset','ensure_game_events','register_account','oauth_profile_authorize'}

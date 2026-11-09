@@ -31,6 +31,9 @@ python3 "$S/scripts/ads.py" --help
 
 巨量视频上传上限为 100 MiB，普通图片为 5 MiB。新版客户端支持 140 MiB 请求体，视频和普通图片上传保留本地原文件名，支持可打印的 UTF-8 文件名。上传大视频前，用 `setup.py doctor` 检查网关的 `max_video_upload_bytes`（新版为 104857600）。文件超出网关报告的上限时，需先升级网关。ROI/预算范围同样受平台业务模式约束；UBMAX在项目层调整ROI，不把它当CPC出价。
 
+读取账户显示名称和备注用 `--account main account-profile`。修改用 `--account main --run-id account-name-example account-name --name '新名称'`，备注用 `--note '新备注'`，清空备注用 `--note ''`。两字段可同时传入，省略的字段保留。网关通过官方 `2/agent/advertiser/update/` 修改账户 `name` / `note`，先查 `2/advertiser/info/` 并核对账户 ID，再写入及回读。该能力需要平台对应的账户查询和代理商修改权限，接口拒绝时保留原回执并报告平台错误。本地 connection.json 的选择别名仍按账户 ID 绑定。
+
+
 新建单图广告时，`new-ad` 或 `new-campaign` 可用 `--images-file /绝对路径/images.json`。批量清单逐行填写 `image_material_list`。每条图像素材需要版式和一张已上传到目标账户的图片，最多 10 条。以下为竖图请求。
 
 ```json

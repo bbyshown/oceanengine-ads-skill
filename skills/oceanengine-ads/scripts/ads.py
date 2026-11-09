@@ -10,6 +10,7 @@ import sys
 import time
 import uuid
 
+import operation_output
 import remote_client
 import creation_schema as creation
 import settings
@@ -50,7 +51,12 @@ def read(op, args=None, client=None):
     row = wait(started['job_id'], client=client)
     r = row.get('result') or {}
     if row['status'] != 'done' or r.get('code', 0) != 0:
-        raise RuntimeError('Read failed; job ' + started['job_id'] + ': ' + json.dumps(row, ensure_ascii=False))
+        path = ROOT / 'data/operations/read-errors' / (started['job_id'] + '.json')
+        save(path, row)
+        details = {key: r[key] for key in ('code', 'message', 'error') if key in r}
+        raise RuntimeError('Read failed; job ' + started['job_id'] + ': '
+                           + json.dumps(operation_output.visible(details), ensure_ascii=False)
+                           + '; details: ' + str(path))
     return r
 
 
@@ -238,10 +244,22 @@ def summary(inv):
                  for a in ads_for(inv, [p['project_id']])]} for p in inv['projects']]}
 
 
+def show(value, path, full=False):
+    save(path, value)
+    if full:
+        operation_output.print_json(value, full=True)
+    else:
+        output = operation_output.visible(value)
+        if isinstance(output, dict):
+            output['details_file'] = str(path)
+        operation_output.print_json(output)
+
+
 def main():
     global CLIENT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run-id', help='Stable request ID; use resume after a timeout.')
+    parser.add_argument('--full-output', action='store_true', help='Print full JSON except upload bodies.')
     parser.add_argument('--dry-run', action='store_true', help='Read and save a plan; no writes.')
     parser.add_argument('--account', help='Configured account alias or exact ID; defaults to the explicitly configured account.')
     sub = parser.add_subparsers(dest='command', required=True)
@@ -290,13 +308,13 @@ def main():
     CLIENT=SelectedClient(selected)
     if args.command in ('status', 'list'):
         inv = read('inventory')['data'];save(ROOT / 'data/operations/latest-inventory.json', inv)
-        print(json.dumps(summary(inv), ensure_ascii=False, indent=2));return
+        show(summary(inv), ROOT / 'data/operations/latest-summary.json', args.full_output);return
     if args.command == 'account-profile':
-        print(json.dumps(read('account_profile'), ensure_ascii=False, indent=2));return
-    if args.command == 'capabilities':print(json.dumps(read('status'), ensure_ascii=False, indent=2));return
-    if args.command == 'preflight':print(json.dumps(read('account_preflight'),ensure_ascii=False,indent=2));return
-    if args.command == 'history':print(json.dumps(read('change_history', {'limit': args.limit}), ensure_ascii=False, indent=2));return
-    if args.command == 'creation-status':print(json.dumps(read('creation_status', {'creation_id': args.creation_id}), ensure_ascii=False, indent=2));return
+        show(read('account_profile'), ROOT / 'data/operations/latest-account-profile.json', args.full_output);return
+    if args.command == 'capabilities':show(read('status'), ROOT / 'data/operations/latest-capabilities.json', args.full_output);return
+    if args.command == 'preflight':show(read('account_preflight'), ROOT / 'data/operations/latest-preflight.json', args.full_output);return
+    if args.command == 'history':show(read('change_history', {'limit': args.limit}), ROOT / 'data/operations/latest-history.json', args.full_output);return
+    if args.command == 'creation-status':show(read('creation_status', {'creation_id': args.creation_id}), RUNS / args.creation_id / 'status.json', args.full_output);return
     if args.command == 'resume':
         run_id = args.saved_run_id
         if not re.fullmatch('[A-Za-z0-9_-]{8,64}', run_id):raise ValueError('Invalid run ID.')
@@ -379,10 +397,19 @@ def main():
         save(RUNS / run_id / 'plan.json', plan)
     print('Run:', run_id, flush=True)
     if args.dry_run:
-        print(json.dumps({'dry_run': True, 'steps': plan['steps']}, ensure_ascii=False, indent=2));return
-    receipt = execute_plan(plan, run_id)
-    print(json.dumps({'run_id': run_id, 'status': receipt['status'], 'steps': len(receipt['steps']),
-                      'receipt': str(RUNS / run_id / 'receipt.json')}, ensure_ascii=False))
+        preview = {'dry_run': True, 'steps': plan['steps'], 'plan_file': str(RUNS / run_id / 'plan.json')}
+        operation_output.print_json(preview, args.full_output);return
+    path = RUNS / run_id / 'receipt.json'
+    try:
+        receipt = execute_plan(plan, run_id)
+    except Exception:
+        if path.exists():
+            output = operation_output.outcome(json.loads(path.read_text()))
+            output['receipt'] = str(path)
+            operation_output.print_json(output)
+        raise
+    output = receipt if args.full_output else operation_output.outcome(receipt)
+    operation_output.print_json(dict(output, receipt=str(path)), args.full_output)
 
 
 if __name__ == '__main__':

@@ -19,7 +19,7 @@ def write_config(path,config,overwrite=False):
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);s=p.add_subparsers(dest='command',required=True)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--full-output', action='store_true');s=p.add_subparsers(dest='command',required=True)
     c=s.add_parser('configure');c.add_argument('--base-url',required=True);c.add_argument('--account',action='append',required=True,help='Alias=account_id; repeat for each account.')
     c.add_argument('--default-account',required=True);c.add_argument('--access',choices=['read_only','operator'],default='read_only')
     c.add_argument('--key-file',type=Path,help='Administrator-provided local key file; otherwise use a hidden terminal prompt.')
@@ -48,7 +48,7 @@ def main():
         print('Local configuration written with mode0600. No advertising settings changed.')
     elif args.command=='accounts':
         import ads
-        print(json.dumps(ads.read('discover_accounts',{'profile_id':args.profile} if args.profile else {})['data'],ensure_ascii=False,indent=2))
+        ads.show(ads.read('discover_accounts',{'profile_id':args.profile} if args.profile else {})['data'], ads.ROOT/'data/latest-accounts.json', args.full_output)
     elif args.command=='add-account':
         import account_access
         print(json.dumps(account_access.add_account(args.entry,args.run_id,dry_run=args.dry_run,profile_id=args.profile,game_app_id=args.game_app_id),ensure_ascii=False,indent=2))

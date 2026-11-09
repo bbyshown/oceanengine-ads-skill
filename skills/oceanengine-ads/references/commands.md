@@ -129,3 +129,6 @@ python3 "$S/scripts/report_ads.py" --account main --project V02 --date 2026-11-0
 ```
 
 多广告时可加`--promotion-id`。元数据按账户缓存24小时；支持的指标取自网关`report_config`。原始报表及指标定义保存在本地状态目录，首日收入/ROI与未成熟7日数据应分开解释。高级查询仍可用`ads.py report --args-file ...`；`filters`和`order_by`必须显式传入。
+
+
+默认查询列表最多展开 10 项，较深层结构和长文本会显示省略提示，完整数据保存到返回的 `details_file`。执行结果包含对象 ID、job_id、核验状态和 `receipt` 路径。使用 `--full-output` 可展开完整结果，上传 Base64 始终从终端输出中省略。该选项须放在子命令之前，例如 `ads.py --full-output creation-status 原creation_id` 或 `setup.py --full-output accounts`。上传恢复数据仍保存在本地原回执，不要把文件内容整体贴入对话。

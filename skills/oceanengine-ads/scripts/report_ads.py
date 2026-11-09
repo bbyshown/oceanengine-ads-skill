@@ -14,7 +14,7 @@ WANTED=['stat_cost','show_cnt','click_cnt','ctr','cpc_platform','active','active
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--account');p.add_argument('--project',required=True)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--full-output',action='store_true');p.add_argument('--account');p.add_argument('--project',required=True)
     p.add_argument('--promotion-id',type=int);p.add_argument('--date',help='YYYY-MM-DD; defaults to today in the chosen timezone.')
     p.add_argument('--timezone',default='Asia/Shanghai');p.add_argument('--hourly',action='store_true');args=p.parse_args()
     tz=ZoneInfo(args.timezone);day=args.date or datetime.now(tz).date().isoformat()
@@ -53,7 +53,9 @@ def main():
         'rows':rows,'total_metrics':response['data']['total_metrics'],'request_id':response.get('request_id'),
         'metric_definitions':{k:{x:names[k].get(x) for x in ('name','description')} for k in metrics}}
     target=ads.ROOT/'data/reports'/str(selected)/day/('hourly.json' if args.hourly else 'daily.json')
-    ads.save(target,result);print(json.dumps(result,ensure_ascii=False,indent=2))
+    ads.save(target,result)
+    output = result if args.full_output else {k:v for k,v in result.items() if k != 'metric_definitions'}
+    ads.operation_output.print_json(dict(output, details_file=str(target)), args.full_output)
 
 
 if __name__=='__main__':

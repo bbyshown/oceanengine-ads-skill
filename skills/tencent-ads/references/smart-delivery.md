@@ -15,7 +15,7 @@
 
 智投生成器目前采用自动版位，不接受 `--site`；自动版位可能要求视频号身份，不能套用普通单元排除视频号已验收的结论。用户需要手动版位时先核对平台智投资格和规格，不擅自开视频号或重建单元。
 
-生成的JSON可按接入文档 `--dry-run batch-create --file 清单` 检查，再以稳定run-id提交。原始单元JSON也可用 `--dry-run new-smart --mode IAA|IAP --args-file 文件`；必须显式包含平台和scene，不会回退普通投放。动态创意仍用 `adgroup_from` 引用已核验父单元。所有创建固定暂停，超时或核验不一致不重建。
+生成的JSON可按接入文档 `--dry-run batch-create --manifest 清单` 检查，再以稳定run-id提交。原始单元JSON也可用 `--dry-run new-smart --mode IAA|IAP --args-file 文件`；必须显式包含平台和scene，不会回退普通投放。动态创意仍用 `adgroup_from` 引用已核验父单元。所有创建固定暂停，超时或核验不一致不重建。
 
 ## 查询与调整
 
@@ -31,3 +31,9 @@
 - [腾讯快速API场景](https://developers.e.qq.com/v3.0/pages/quick_api_mcp)
 
 官方快速API区分普通小游戏与智投场景；当前入口复用既有v3营销单元接口及真实平台字段，不调用默认可能开启投放的快速创建接口。平台文档和SDK更新可能不同步，字段支持以目标账户实际返回和严格回执为准。
+
+## 排错：不要猜操作名
+
+`new-smart` 是客户端命令，网关实际操作仍为 **`tencent_new_adgroup`**，payload显式带上述平台和scene。不存在 `smart_delivery`、`new_smart_delivery`、`smart_create` 或单独的AIM+项目层op。不要用猜测的op探测功能，也不要依据未知op的账户错误推断腾讯智投未实现。以签名status的operations、smart_delivery_support_version和客户端dry-run的实际映射核对。
+
+当前 `live_account_verification` 是固定返回pending的历史提示，不是可配置的权限开关，也不阻断创建；不能要求管理员将其改为完成。账户真实可见性以inventory/conversions等成功回执核验。实际写入需要本机operator、所选profile的write_enabled=true、账户/游戏范围及该账户自己的有效操作人凭据；这些条件与智投字段支持是不同检查项。未经具体业务授权不要为排错开启写入。

@@ -650,3 +650,25 @@ class SmartDeliveryTests(unittest.TestCase):
         self.assertEqual([g['adgroup_id'] for g in r['data']['adgroups']],[33])
         r=self.execute('tencent_inventory',{'account_id':123,'delivery':'standard'})
         self.assertEqual([g['adgroup_id'] for g in r['data']['adgroups']],[11])
+
+
+class CreationCliRegressionTests(unittest.TestCase):
+    def test_single_group_commands_map_to_existing_op_without_creative_parent(self):
+        import io
+        from contextlib import redirect_stdout
+        for command,payload in [('new-adgroup',new_group()),('new-smart',smart_group())]:
+            with tempfile.TemporaryDirectory() as folder:
+                path=Path(folder)/'payload.json';path.write_text(json.dumps(payload))
+                argv=['tencent_ads.py','--account','123','--profile','team-example','--dry-run',command,'--mode','IAA','--args-file',str(path)]
+                with patch('sys.argv',argv),patch.object(client,'Gateway'),redirect_stdout(io.StringIO()) as output:
+                    client.main()
+                step=json.loads(output.getvalue())['steps'][0]
+                self.assertEqual(step['op'],'tencent_new_adgroup')
+                self.assertNotIn('adgroup_id',step['args'])
+                self.assertEqual(step['args']['payload']['configured_status'],'AD_STATUS_SUSPEND')
+
+    def test_new_smart_refuses_ordinary_payload(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'payload.json';path.write_text(json.dumps(new_group()))
+            argv=['tencent_ads.py','--account','123','--dry-run','new-smart','--mode','IAA','--args-file',str(path)]
+            with patch('sys.argv',argv),patch.object(client,'Gateway'),self.assertRaises(ValueError):client.main()

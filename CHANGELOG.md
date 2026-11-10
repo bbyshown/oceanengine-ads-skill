@@ -1,5 +1,10 @@
 # 更新记录
 
+## 1.2.1
+
+- 修复单条new-smart/new-adgroup误读创意adgroup_id参数，增加真实CLI预演回归测试。批量入口不受影响。
+- 明确智投复用tencent_new_adgroup，禁止猜op；说明固定pending提示并非写入门禁，修正清单参数为--manifest。客户端及文档更新，无需网关部署。
+
 ## 1.2.0
 
 - 腾讯小游戏智投：独立平台/scene、IAA及IAP首日/7日ROI，离线批次、固定暂停创建、实时转化资产校验、严格智投回读。

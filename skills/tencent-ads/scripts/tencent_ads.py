@@ -227,7 +227,7 @@ def main():
         if command in ('new-adgroup', 'new-smart'): payload['monetization'] = args.mode
         if command == 'new-smart' and payload['payload'].get('smart_delivery_platform') != schema.SMART_PLATFORM:
             raise ValueError('new-smart requires an explicit supported smart platform and scene; ordinary fallback is forbidden.')
-        else: payload['adgroup_id'] = args.adgroup_id
+        if command == 'new-creative': payload['adgroup_id'] = args.adgroup_id
     elif command == 'upload':
         raw = args.file.read_bytes();safe = 'material-' + hashlib.sha256(raw).hexdigest()[:12] + args.file.suffix.lower()
         op, payload = 'tencent_upload', dict(account, kind=args.kind, filename=safe, base64=base64.b64encode(raw).decode())

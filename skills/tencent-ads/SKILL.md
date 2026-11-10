@@ -19,6 +19,8 @@ description: 通过已授权的腾讯广告MKTAPI v3.0管理网关管理微信�
 
 令牌交换失败先查签名 `status.authorization_diagnostic`；5014 不足以判定角色问题。授权与令牌节点不一致的排查和所有者配置见操作参考的「OAuth 授权节点与令牌节点不一致」。
 
+创建接口报 11101 缺 `user_token` 时，走操作参考的「操作人认证与 user_token」；不要将其当成 OAuth 失败或组织角色不足。
+
 ## 日常操作
 
 先`status`检查服务可用，再以明确`--account`读取`inventory`定位实际ID。单次命令与JSON示例见操作参考。日常调用复用脚本，不重复编写临时API请求。

@@ -456,3 +456,56 @@ class OAuthTokenHostTests(unittest.TestCase):
         with patch.object(runtime.socket,'create_connection') as connect,patch.object(connection._context,'wrap_socket') as wrap:
             connection.connect()
         wrap.assert_called_once_with(connect.return_value,server_hostname='developers.e.qq.com')
+
+class OperatorCredentialTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        cfg = dict(config(), write_enabled=False, _profile_id='test-operator')
+        folder = runtime.directory(self.root, cfg)
+        runtime.save(folder/'config.json', {k:v for k,v in cfg.items() if k!='_profile_id'})
+        runtime.save(folder/'tokens.json', {'access_token':'existing-app-token'})
+        self.cfg = runtime.load_config(self.root, profile_id='test-operator')
+        self.folder = folder
+        self.link = runtime.user_authorize_url(self.root, self.cfg, 123)
+        self.state = runtime.urlsplit(self.link['authorization_url']).query
+        from urllib.parse import parse_qs
+        self.state = parse_qs(self.state)['state'][0]
+        self.query = dict(state=self.state, user_status='2', user_token='fake-operator-secret',expire_time=str(int(time.time())+3600))
+
+    def test_callback_saves_only_scoped_credential_without_enabling_ads(self):
+        old_tokens = (self.folder/'tokens.json').read_bytes()
+        result = runtime.user_callback(self.root, self.query)
+        cfg = runtime.load_config(self.root, profile_id='test-operator')
+        self.assertTrue(result['user_authorized'])
+        self.assertNotIn('fake-operator-secret', json.dumps(result))
+        self.assertNotIn('fake-operator-secret', (self.folder/'user-authorization.json').read_text())
+        self.assertEqual(cfg['accounts']['123']['user_token'],'fake-operator-secret')
+        self.assertFalse(cfg['write_enabled'])
+        self.assertEqual(old_tokens,(self.folder/'tokens.json').read_bytes())
+        self.assertEqual((self.folder/'config.json').stat().st_mode & 0o777,0o600)
+        with self.assertRaises(runtime.Rejected):runtime.user_callback(self.root,self.query)
+
+    def test_bad_state_expired_token_and_missing_token_preserve_config(self):
+        original=(self.folder/'config.json').read_bytes()
+        for change in ({'state':self.state+'x'}, {'expire_time':'1'}, {'user_token':''},
+                       {'user_status':'3'}, {'user_token':'bad\nvalue'}):
+            with self.subTest(change=change), self.assertRaises(runtime.Rejected):
+                runtime.user_callback(self.root,dict(self.query,**change))
+            self.assertEqual(original,(self.folder/'config.json').read_bytes())
+        state=json.loads((self.folder/'user-authorization.json').read_text());state['expires_at']=1
+        runtime.save(self.folder/'user-authorization.json',state)
+        with self.assertRaises(runtime.Rejected):runtime.user_callback(self.root,self.query)
+
+    def test_live_link_not_reissued_and_incomplete_verification_not_saved(self):
+        with self.assertRaises(runtime.Rejected):runtime.user_authorize_url(self.root,self.cfg,123)
+        result=runtime.user_callback(self.root,dict(self.query,user_status='1'))
+        self.assertFalse(result['user_authorized'])
+        self.assertNotIn('user_token',runtime.load_config(self.root,profile_id='test-operator')['accounts']['123'])
+        with self.assertRaises(runtime.Rejected):runtime.user_authorize_url(self.root,self.cfg,456)
+
+    def test_expired_operator_token_stops_before_transport(self):
+        cfg=dict(self.cfg,accounts={'123':dict(self.cfg['accounts']['123'],user_token='expired-secret',user_token_expires_at=1)})
+        with patch.object(runtime,'access_token',return_value='app-token'),patch.object(runtime,'fetch_json') as fetch:
+            with self.assertRaises(runtime.Rejected):runtime.API(self.root,cfg)('adgroups/add',{'account_id':123},post=True)
+        fetch.assert_not_called()

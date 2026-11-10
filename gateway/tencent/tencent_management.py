@@ -85,6 +85,10 @@ def execute(op, args, *, root, api=None):
                 'oauth_token_remote_ip': runtime.token_remote_ip(cfg),
                 'oauth_token_host': runtime.token_host(cfg),
                 'management_enabled': bool(cfg.get('accounts')), 'managed_account_ids': sorted(cfg.get('accounts', {})),
+                'operator_credentials': {k: {'configured': bool(a.get('user_token')),
+                    'expires_at': a.get('user_token_expires_at'),
+                    'valid': bool(a.get('user_token')) and (a.get('user_token_expires_at') is None or a['user_token_expires_at'] > time.time())}
+                    for k, a in cfg.get('accounts', {}).items()},
                 'live_account_verification': 'pending', 'create_policy': 'paused_only', 'automatic_pause': False}
     cfg = runtime.load_config(root, require_accounts=op != 'tencent_authorize', profile_id=profile_id)
     folder = runtime.directory(root, cfg)

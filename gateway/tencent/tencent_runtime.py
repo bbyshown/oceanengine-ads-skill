@@ -351,6 +351,75 @@ def callback(root, query):
             'message': 'Authorization completed. Tokens saved in the selected profile; existing profiles preserved. Return to the chat to verify accounts.'}
 
 
+def user_authorize_url(root, cfg, account_id):
+    """Owner-only link issuance for an already scoped account; no advertising write."""
+    if not cfg.get('_profile_id'):
+        raise Rejected('Select an explicit Tencent identity profile.')
+    account_id = str(account_id)
+    if account_id not in cfg.get('accounts', {}):
+        raise Rejected('Tencent user authorization account is outside scope.')
+    with locked(root, cfg) as path:
+        if not (path / 'tokens.json').exists():
+            raise Rejected('Complete Tencent application OAuth first.')
+        file = path / 'user-authorization.json'
+        previous = json.loads(file.read_text()) if file.exists() else {}
+        if previous.get('status') == 'issued' and previous.get('expires_at', 0) > time.time():
+            raise Rejected('A live user authorization link exists; retrieve the owner receipt.')
+        state = 'txu1_' + cfg['_profile_id'] + '.' + secrets.token_urlsafe(32)
+        callback_url = cfg['redirect_uri'].replace('/oauth/callback', '/user/callback')
+        expires_at = int(time.time()) + 1800
+        save(file, {'state_hash': hashlib.sha256(state.encode()).hexdigest(),
+                    'expires_at': expires_at, 'client_id': str(cfg['client_id']),
+                    'account_id': account_id, 'status': 'issued'})
+    return {'authorization_url': 'https://ad.qq.com/account-center/single/user-authorize?' +
+            urlencode({'redirect_uri': callback_url, 'state': state}), 'expires_at': expires_at,
+            'profile_id': cfg['_profile_id'], 'account_id': account_id}
+
+
+def user_callback(root, query):
+    """Receive Tencent's operator credential without returning it or enabling writes."""
+    if set(query) - {'state', 'user_status', 'user_token', 'expire_time'}:
+        raise Rejected('Unexpected Tencent user callback fields.')
+    given = query.get('state', '')
+    if not isinstance(given, str) or not given.startswith('txu1_') or '.' not in given:
+        raise Rejected('Invalid Tencent user callback state.')
+    profile_id = profile_name(given[5:].split('.', 1)[0])
+    cfg = load_config(root, profile_id=profile_id)
+    with locked(root, cfg) as path:
+        file = path / 'user-authorization.json'
+        if not file.exists(): raise Rejected('No pending Tencent user authorization.')
+        state = json.loads(file.read_text())
+        if (state.get('status') != 'issued' or time.time() > state.get('expires_at', 0)
+                or state.get('client_id') != str(cfg['client_id'])
+                or not secrets.compare_digest(hashlib.sha256(given.encode()).hexdigest(), state.get('state_hash', ''))
+                or state.get('account_id') not in cfg['accounts']):
+            raise Rejected('Tencent user state expired, consumed or mismatched.')
+        status = query.get('user_status')
+        if status not in ('0', '1', '2'): raise Rejected('Invalid Tencent user verification status.')
+        if status != '2':
+            state.update(status='incomplete', user_status=int(status), completed_at=time.time())
+            save(file, state)
+            return {'user_authorized': False, 'user_status': int(status), 'profile_id': profile_id,
+                    'message': 'Tencent operator verification is incomplete. Complete verification and request a fresh link.'}
+        token = query.get('user_token', '')
+        expiry = query.get('expire_time', '')
+        if (not isinstance(token, str) or not 1 <= len(token.encode()) <= 128
+                or any(not 33 <= ord(c) <= 126 for c in token)
+                or not isinstance(expiry, str) or not re.fullmatch(r'[0-9]{1,12}', expiry)
+                or int(expiry) <= time.time()):
+            raise Rejected('Tencent operator credential is missing, malformed or expired.')
+        # Read current configuration under the same lock; preserve account scope and write switch.
+        current = json.loads((path / 'config.json').read_text())
+        account = current['accounts'][state['account_id']]
+        account.update(user_token=token, user_token_expires_at=int(expiry))
+        save(path / 'config.json', current)
+        state.update(status='authorized', user_status=2, completed_at=time.time(), token_expires_at=int(expiry))
+        save(file, state)
+    return {'user_authorized': True, 'user_status': 2, 'provider': 'tencent', 'profile_id': profile_id,
+            'account_id': state['account_id'], 'expires_at': int(expiry),
+            'message': 'Operator credential saved securely. Return to the chat to continue the paused advertisement test.'}
+
+
 class API:
     def __init__(self, root, cfg): self.root, self.cfg = Path(root), cfg
 
@@ -365,7 +434,10 @@ class API:
         headers = {};body = None;data = dict(params)
         if post:
             account = self.cfg['accounts'][str(params['account_id'])]
-            if account.get('user_token') and upload is None: data['user_token'] = account['user_token']
+            if account.get('user_token') and upload is None:
+                if account.get('user_token_expires_at') is not None and account['user_token_expires_at'] <= time.time():
+                    raise Rejected('Tencent operator credential expired; request fresh operator verification.')
+                data['user_token'] = account['user_token']
             if upload:
                 field, filename, raw = upload;boundary = uuid.uuid4().hex
                 parts = []

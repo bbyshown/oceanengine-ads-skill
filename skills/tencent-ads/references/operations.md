@@ -104,3 +104,12 @@ JSON中的50000分是500元；bid_amount=200是2元。示例时间/出价不构�
 
 
 节点验证还须核对域名路由：同一公网 IP 可能只为 `developers.e.qq.com` 路由 `/oauth/token`，而对 `api.e.qq.com` 断连。网关所有者可配置 `oauth_token_host`（默认 `api.e.qq.com`，仅另允许 `developers.e.qq.com`）。这是经现场探测的可选路由，官方文档默认接口仍是 `api.e.qq.com`；不要在未核验的环境自动切换。先以假参数在目标节点验证 TLS 与 OAuth JSON 响应，再配置匹配的域名/IP 并生成新链接。state 同时绑定域名与 IP，域名改变后拒绝消费旧链接。假参数可达只证明传输链路，不证明真实授权成功；真实新 code 只交换一次，拒绝后停止，不跨域名或跨节点重试。
+
+
+### 操作人认证与 user_token
+
+OAuth Token 和操作人 `user_token` 是两种凭证。腾讯创建接口若返回 11101 缺少 `user_token`，不能推断用户不是主管理员或未加入组织；第三方应用同样需要此参数。不要重复 OAuth 或要求用户把令牌发到聊天。
+
+网关运行包需安装 `tencent/user/callback` GET 路由到 `tencent_runtime.user_callback`（严格拒绝重复查询字段、错误响应不回显参数），并关闭管理路由的访问日志。网关所有者在已授权且登记账户的显式档案上调用 `tencent_runtime.user_authorize_url(root, cfg, account_id)`，生成腾讯官方 `https://ad.qq.com/account-center/single/user-authorize` 组件链接，包含 HTTPS redirect_uri 与一次性 state。链接有效 30 分钟；用户本人完成腾讯确认后，回调只在 user_status=2、user_token及expire_time合法时保存到该档案的选定账户。其余状态表示认证未完成，不保存令牌。
+
+令牌只留在服务器 0600 config.json，原 OAuth 凭证、账户范围和 write_enabled 不变。签名 status 的 operator_credentials 仅显示配置/有效性及过期时间。重复/过期/错档案回调拒绝；令牌过期在写请求前停止。拿到令牌仍不等于广告创建成功，应回读库存，并依原拒绝回执处理纠正后的暂停批次。

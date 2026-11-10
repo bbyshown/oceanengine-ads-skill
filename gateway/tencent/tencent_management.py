@@ -11,6 +11,7 @@ import time
 import uuid
 
 import tencent_runtime as runtime
+import tencent_schema as schema
 
 from tencent_schema import (READS, WRITES, OPS, GROUP_FIELDS, CREATIVE_FIELDS, integer, validate)
 
@@ -96,7 +97,8 @@ def execute(op, args, *, root, api=None):
                     'expires_at': a.get('user_token_expires_at'),
                     'valid': bool(a.get('user_token')) and (a.get('user_token_expires_at') is None or a['user_token_expires_at'] > time.time())}
                     for k, a in cfg.get('accounts', {}).items()},
-                'live_account_verification': 'pending', 'create_policy': 'paused_only', 'automatic_pause': False}
+                'live_account_verification': 'pending', 'create_policy': 'paused_only', 'automatic_pause': False,
+                'smart_delivery_platforms': [schema.SMART_PLATFORM], 'smart_delivery_support_version': 1}
     cfg = runtime.load_config(root, require_accounts=op != 'tencent_authorize', profile_id=profile_id)
     folder = runtime.directory(root, cfg)
     if op == 'tencent_authorize': return {'code': 0, 'data': {'authorization_url': runtime.authorize_url(root, cfg)}}
@@ -132,7 +134,9 @@ def execute(op, args, *, root, api=None):
         return {'code': 0, 'data': {'list': rows}, 'provider': 'tencent', 'amount_unit': 'fen', 'timezone': 'Asia/Shanghai', 'missing_metrics_are_zero': False}
     if op == 'tencent_inventory':
         groups = all_rows(api, 'adgroups/get', {'account_id': account_id, 'fields': GROUP_FIELDS, 'is_deleted': False})
-        groups = [g for g in groups if allowed_game(g, account)]
+        groups = [dict(g, delivery_type='smart' if schema.is_smart(g) else 'standard') for g in groups if allowed_game(g, account)]
+        if args.get('delivery', 'all') != 'all':
+            groups = [g for g in groups if g['delivery_type'] == args['delivery']]
         creatives = []
         for group in groups:
             children = all_rows(api, 'dynamic_creatives/get', {'account_id': account_id, 'fields': CREATIVE_FIELDS, 'is_deleted': False,
@@ -169,6 +173,17 @@ def execute(op, args, *, root, api=None):
             if outer.get('marketing_target_type') != 'MARKETING_TARGET_TYPE_WECHAT_MINI_GAME' or outer.get('marketing_asset_outer_id') != wanted['marketing_carrier_detail']['marketing_carrier_id']:
                 raise ValueError('Tencent carrier and promoted game must match.')
         if not required <= set(wanted): raise ValueError('Missing required Tencent creation fields: ' + ','.join(sorted(required - set(wanted))))
+        if not creative and schema.is_smart(wanted):
+            scene = wanted['smart_delivery_scene_spec']
+            rows = all_rows(api, 'conversions/get', {'account_id': account_id,
+                'fields': ['conversion_id', 'marketing_carrier_id', 'optimization_goal', 'deep_worth_optimization_goal', 'access_status'],
+                'filtering': [{'field': 'conversion_id', 'operator': 'EQUALS', 'values': [str(scene['conversion_id_list'][0])]}]})
+            if (len(rows) != 1 or rows[0].get('conversion_id') != scene['conversion_id_list'][0]
+                    or rows[0].get('marketing_carrier_id') != wanted['marketing_carrier_detail']['marketing_carrier_id']
+                    or rows[0].get('access_status') != 'ACCESS_STATUS_COMPLETED'
+                    or rows[0].get('optimization_goal') != wanted['optimization_goal']
+                    or rows[0].get('deep_worth_optimization_goal') != schema.SMART_GOALS[scene['smart_delivery_goal']][2]):
+                raise ValueError('Smart conversion asset does not match the selected account, game, mode and ROI goal.')
         name_key = 'dynamic_creative_name' if creative else 'adgroup_name'
         existing = all_rows(api, endpoint + '/get', {'account_id': account_id, 'fields': [key, name_key], 'is_deleted': False,
             'filtering': [{'field': name_key, 'operator': 'EQUALS', 'values': [wanted[name_key]]}]})
@@ -181,6 +196,19 @@ def execute(op, args, *, root, api=None):
         before = one(api, account_id, args[key], creative)
         parent = one(api, account_id, int(before['adgroup_id'])) if creative else before
         if not allowed_game(parent, account): raise ValueError('Tencent object is outside the configured account/game scope.')
+        if not creative and not deleting:
+            if 'smart_delivery_scene_spec' in wanted:
+                if set(wanted) & {'deep_conversion_spec', 'deep_conversion_worth_rate', 'deep_conversion_worth_advanced_rate', 'bid_amount'}:
+                    raise ValueError('Do not mix ordinary bid fields with a smart scene update.')
+                if before.get('smart_delivery_platform') != schema.SMART_PLATFORM:
+                    raise ValueError('Cannot turn an ordinary or unsupported project into a mini-game smart project.')
+                previous = before.get('smart_delivery_scene_spec') or {}
+                incoming = wanted['smart_delivery_scene_spec']
+                if any(incoming.get(k) != previous.get(k) for k in ('smart_delivery_goal', 'conversion_id_list')):
+                    raise ValueError('Smart update must preserve the existing goal and conversion asset.')
+            elif schema.is_smart(before) and set(wanted) & {'deep_conversion_spec', 'deep_conversion_worth_rate', 'deep_conversion_worth_advanced_rate', 'bid_amount'}:
+                raise ValueError('Use smart_delivery_scene_spec to update smart ROI or base bid.')
+
         if creative: guard_jumps(wanted.get('creative_components', {}), parent['marketing_carrier_detail']['marketing_carrier_id'])
         if deleting:
             if before.get('configured_status') != 'AD_STATUS_SUSPEND': raise ValueError('Pause the Tencent object before deletion.')

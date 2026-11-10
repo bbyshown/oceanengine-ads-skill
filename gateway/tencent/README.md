@@ -41,3 +41,5 @@ link = runtime.user_authorize_url(root, cfg, 123)
 回调state绑定档案/应用/账户、30分钟、单次使用；仅user_status=2且令牌有效时保存到该账户配置的user_token/user_token_expires_at。wx_id允许但不保存。应用OAuth Token、账户白名单与write_enabled均不变。POST的user_token放在URL查询参数，JSON仅业务字段；不可在日志、异常或回执中暴露凭证。
 
 `status.operator_credentials` 只输出是否配置、过期时间与有效性。所有者须按业务授权临时控制write_enabled；用户本人认证不会自动启用广告写入。该附加模块不含独立HTTP服务器，安装/升级需同时验证上述两条回调路由。
+
+腾讯小游戏智投（1.2.0）：支持 IAA/IAP 首日、7日 ROI 的独立智投清单、暂停创建、库存过滤及 ROI/基础出价调整。需升级网关；真实智投写入尚待验收。详见 [智投说明](../../skills/tencent-ads/references/smart-delivery.md)。

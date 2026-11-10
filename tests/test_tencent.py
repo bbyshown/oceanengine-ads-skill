@@ -569,3 +569,84 @@ class ExistingGatewayConnectionTests(unittest.TestCase):
             argv=['tencent_ads.py','--config',str(source),'configure','--from-oceanengine-config',str(source),'--overwrite']
             with patch.object(client.sys,'argv',argv),self.assertRaises(ValueError):client.main()
             self.assertEqual(source.read_bytes(),before)
+
+
+def smart_group(goal='SMART_DELIVERY_GOAL_SEVEN_DAY_MONETIZATION'):
+    p = new_group(); mode, field, conversion_goal = schema.SMART_GOALS[goal]
+    p.update(smart_delivery_platform=schema.SMART_PLATFORM, conversion_id=77, bid_amount=200,
+        smart_delivery_scene_spec={'smart_delivery_goal':goal,'conversion_id_list':[77],
+            'smart_delivery_goal_spec':{'mini_game_promotion_spec':{'register_cost':200,field:.45}}},
+        deep_conversion_spec={'deep_conversion_type':'DEEP_CONVERSION_WORTH',
+            'deep_conversion_worth_spec':{'goal':conversion_goal,'expected_roi':.45}})
+    return p
+
+
+class SmartDeliveryTests(unittest.TestCase):
+    setUp = TencentTests.setUp
+    execute = TencentTests.execute
+    # Only feature tests belong to this class; base fixture remains shared.
+    def smart_api(self, mismatch=False, wrong_game=False):
+        original = self.api
+        def call(endpoint, params, post=False, upload=None):
+            if endpoint == 'conversions/get':
+                return {'code':0,'data':{'list':[{'conversion_id':77,
+                    'marketing_carrier_id':'wxwrong' if wrong_game else GAME,
+                    'optimization_goal':'OPTIMIZATIONGOAL_APP_REGISTER',
+                    'deep_worth_optimization_goal':'GOAL_7DAY_MONETIZATION_ROAS',
+                    'access_status':'ACCESS_STATUS_COMPLETED'}], 'page_info':{'total_page':1}}}
+            result = original(endpoint, params, post, upload)
+            if mismatch and endpoint == 'adgroups/get':
+                for row in result['data']['list']: row.pop('smart_delivery_platform',None)
+            return result
+        return call
+
+    def test_smart_all_four_goals_and_mode_validation(self):
+        for goal, (mode, field, _) in schema.SMART_GOALS.items():
+            p=smart_group(goal);schema.check_patch(p, create=True, monetization=mode)
+            with self.assertRaises(ValueError): schema.check_patch(p, create=True, monetization='IAP' if mode=='IAA' else 'IAA')
+            for key,value in [('conversion_id',78),('bid_amount',300),('smart_delivery_platform','unknown')]:
+                bad=copy.deepcopy(p);bad[key]=value
+                with self.assertRaises(ValueError):schema.check_patch(bad,create=True,monetization=mode)
+            bad=copy.deepcopy(p);bad['smart_delivery_scene_spec']['smart_delivery_goal_spec']['mini_game_promotion_spec']['extra_roi']=.1
+            with self.assertRaises(ValueError):schema.check_patch(bad,create=True,monetization=mode)
+
+    def test_smart_readback_must_confirm_platform(self):
+        for mismatch in (False,True):
+            with self.subTest(mismatch=mismatch):
+                self.api.groups=[group()]
+                p=smart_group();p['adgroup_name']+='_'+str(mismatch)
+                if mismatch:
+                    with self.assertRaises(management.Failure) as caught:
+                        management.execute('tencent_new_adgroup',{'account_id':123,'monetization':'IAA','payload':p},root=self.root,api=self.smart_api(True))
+                    self.assertEqual(caught.exception.state,'mismatch')
+                else:
+                    r=management.execute('tencent_new_adgroup',{'account_id':123,'monetization':'IAA','payload':p},root=self.root,api=self.smart_api())
+                    self.assertTrue(r['data']['verified'])
+                    self.assertEqual(r['data']['after']['configured_status'],'AD_STATUS_SUSPEND')
+
+    def test_smart_conversion_game_checked_before_post(self):
+        with self.assertRaises(ValueError):
+            management.execute('tencent_new_adgroup',{'account_id':123,'monetization':'IAA','payload':smart_group()},root=self.root,api=self.smart_api(wrong_game=True))
+        self.assertFalse(any(post for _,_,post in self.api.calls))
+
+    def test_smart_updates_preserve_goal_and_other_bid(self):
+        g=smart_group();g['adgroup_id']=11;self.api.groups=[g]
+        patch=schema.smart_scene_patch(g,roi_value='.6')
+        values=patch['smart_delivery_scene_spec']['smart_delivery_goal_spec']['mini_game_promotion_spec']
+        self.assertEqual(values,{'register_cost':200,'seven_day_monetization_roi':.6})
+        self.assertEqual(g['smart_delivery_scene_spec']['smart_delivery_goal_spec']['mini_game_promotion_spec']['seven_day_monetization_roi'],.45)
+        r=self.execute('tencent_update_adgroup',{'account_id':123,'adgroup_id':11,'patch':patch})
+        self.assertTrue(r['data']['verified'])
+        for bad in ({'bid_amount':300},dict(patch,bid_amount=300),{'smart_delivery_scene_spec':dict(patch['smart_delivery_scene_spec'],conversion_id_list=[78])}):
+            with self.assertRaises(ValueError):self.execute('tencent_update_adgroup',{'account_id':123,'adgroup_id':11,'patch':bad})
+        self.api.groups=[group()]
+        with self.assertRaises(ValueError):self.execute('tencent_update_adgroup',{'account_id':123,'adgroup_id':11,'patch':patch})
+
+    def test_smart_inventory_filters_and_keeps_game_scope(self):
+        smart=smart_group();smart['adgroup_id']=33
+        outside=copy.deepcopy(smart);outside['adgroup_id']=44;outside['marketing_carrier_detail']['marketing_carrier_id']='wxother'
+        self.api.groups += [smart,outside]
+        r=self.execute('tencent_inventory',{'account_id':123,'delivery':'smart'})
+        self.assertEqual([g['adgroup_id'] for g in r['data']['adgroups']],[33])
+        r=self.execute('tencent_inventory',{'account_id':123,'delivery':'standard'})
+        self.assertEqual([g['adgroup_id'] for g in r['data']['adgroups']],[11])

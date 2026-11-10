@@ -87,3 +87,5 @@ PYTHONPATH=skills/oceanengine-ads/scripts:skills/tencent-ads/scripts:gateway/ten
 目前提供营销单元/动态创意暂停创建、修改、预算出价排期、启停删除、素材、资金及日报/小时报表接口。IAA和IAP使用各自的ROAS目标；收入字段和账户可用目标须经真实联调核定。腾讯周期监控、自动关停和账户日限额尚未开放。
 
 仓库中的[gateway/tencent](gateway/tencent/README.md)是供已有网关集成的通用附加模块，不是完整生产网关或一键自建服务。生产凭证与模板仍由各团队管理员提供。
+
+腾讯小游戏智投（1.2.0）：支持 IAA/IAP 首日、7日 ROI 的独立智投清单、暂停创建、库存过滤及 ROI/基础出价调整。需升级网关；真实智投写入尚待验收。详见 [智投说明](skills/tencent-ads/references/smart-delivery.md)。

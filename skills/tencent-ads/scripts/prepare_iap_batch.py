@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from tencent_ads import validate_steps
-from tencent_schema import money, ratio
+from tencent_schema import money, ratio, SMART_GOALS, SMART_PLATFORM
 
 # The manually selected placement set used by the verified no-Channels workflow.
 NO_CHANNELS_SITES = [
@@ -18,6 +18,7 @@ NO_CHANNELS_SITES = [
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--smart-goal', choices=sorted(SMART_GOALS), help='Generate a mini-game smart-delivery batch instead; determines IAA/IAP and ROI period. Automatic placements may require a Channels identity.')
     parser.add_argument('--account', type=int, required=True)
     parser.add_argument('--profile', required=True)
     parser.add_argument('--game', required=True, help='Verified WeChat mini-game wxAppID.')
@@ -29,7 +30,7 @@ def main():
     parser.add_argument('--description', required=True)
     parser.add_argument('--name-prefix', required=True, help='A distinct name for this batch; preserve it on recovery.')
     parser.add_argument('--budget', required=True, help='Daily yuan budget, not fen.')
-    parser.add_argument('--roi', required=True, help='First-day purchase ROAS ratio, e.g. 0.2.')
+    parser.add_argument('--roi', required=True, help='ROAS ratio for the selected goal; ordinary default is first-day purchase, e.g. 0.2.')
     parser.add_argument('--registration-bid', required=True, help='Base registration bid in yuan; separate from ROAS.')
     parser.add_argument('--date', default=datetime.now(timezone(timedelta(hours=8))).date().isoformat())
     parser.add_argument('--site', action='append', choices=NO_CHANNELS_SITES,
@@ -59,6 +60,17 @@ def main():
                                                                 'expected_roi': ratio(args.roi)}},
         'configured_status': 'AD_STATUS_SUSPEND',
     }
+    mode = 'IAP'
+    if args.smart_goal:
+        if args.site: parser.error('This smart generator currently uses automatic placements; do not assume no-Channels eligibility.')
+        mode, field, conversion_goal = SMART_GOALS[args.smart_goal]
+        group.update(smart_delivery_platform=SMART_PLATFORM, automatic_site_enabled=True,
+                     smart_delivery_scene_spec={'smart_delivery_goal': args.smart_goal,
+                         'smart_delivery_goal_spec': {'mini_game_promotion_spec': {
+                             'register_cost': money(args.registration_bid), field: ratio(args.roi)}},
+                         'conversion_id_list': [args.conversion]})
+        group.pop('site_set')
+        group['deep_conversion_spec']['deep_conversion_worth_spec']['goal'] = conversion_goal
     creative = {
         'dynamic_creative_name': args.name_prefix + '_创意_暂停',
         'delivery_mode': 'DELIVERY_MODE_COMPONENT',
@@ -72,7 +84,7 @@ def main():
         },
         'configured_status': 'AD_STATUS_SUSPEND',
     }
-    steps = [{'op': 'tencent_new_adgroup', 'args': dict(selection, monetization='IAP', payload=group)},
+    steps = [{'op': 'tencent_new_adgroup', 'args': dict(selection, monetization=mode, payload=group)},
              {'op': 'tencent_new_creative', 'adgroup_from': 1, 'args': dict(selection, payload=creative)}]
     validate_steps(steps)
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -80,7 +92,7 @@ def main():
         json.dump(steps, file, ensure_ascii=False, indent=2)
         file.write('\n')
     print(json.dumps({'prepared': True, 'file': str(args.out.resolve()), 'steps': 2,
-                      'paused_only': True, 'channels_excluded': True, 'network_requests': 0}, ensure_ascii=False))
+                      'paused_only': True, 'channels_excluded': not bool(args.smart_goal), 'smart_delivery': bool(args.smart_goal), 'network_requests': 0}, ensure_ascii=False))
 
 
 if __name__ == '__main__':

@@ -14,21 +14,71 @@ GROUP_FIELDS = ['adgroup_id', 'adgroup_name', 'marketing_carrier_type', 'marketi
                 'daily_budget', 'bid_amount', 'bid_mode', 'optimization_goal', 'deep_conversion_spec',
                 'conversion_id', 'deep_conversion_worth_rate', 'deep_conversion_worth_advanced_rate', 'targeting',
                 'marketing_goal', 'marketing_sub_goal', 'first_day_begin_time', 'automatic_site_enabled',
-                'site_set', 'scene_spec', 'user_action_sets', 'smart_bid_type', 'bid_scene']
+                'site_set', 'scene_spec', 'user_action_sets', 'smart_bid_type', 'bid_scene',
+                'smart_delivery_platform', 'smart_delivery_scene_spec']
 CREATIVE_FIELDS = ['dynamic_creative_id', 'dynamic_creative_name', 'adgroup_id', 'creative_components',
                    'configured_status', 'is_deleted', 'creative_template_id', 'delivery_mode', 'dynamic_creative_type']
 GROUP_PATCH = {'adgroup_name', 'configured_status', 'daily_budget', 'bid_amount', 'begin_date', 'end_date',
                'first_day_begin_time', 'time_series', 'targeting', 'deep_conversion_spec',
-               'deep_conversion_worth_rate', 'deep_conversion_worth_advanced_rate', 'smart_targeting_mode'}
+               'deep_conversion_worth_rate', 'deep_conversion_worth_advanced_rate', 'smart_targeting_mode',
+               'smart_delivery_scene_spec'}
 GROUP_CREATE = GROUP_PATCH | {'marketing_goal', 'marketing_sub_goal', 'marketing_carrier_type',
     'marketing_carrier_detail', 'marketing_asset_outer_spec', 'bid_mode', 'smart_bid_type', 'bid_scene',
     'optimization_goal', 'conversion_id', 'automatic_site_enabled', 'site_set', 'scene_spec', 'user_action_sets',
-    'additional_user_action_sets', 'feedback_id'}
+    'additional_user_action_sets', 'feedback_id', 'smart_delivery_platform'}
 CREATIVE_PATCH = {'dynamic_creative_name', 'configured_status', 'creative_components', 'click_tracking_url', 'impression_tracking_url'}
 CREATIVE_CREATE = CREATIVE_PATCH | {'creative_template_id', 'delivery_mode', 'dynamic_creative_type'}
 ROI_GOALS = {'IAA': {'GOAL_1DAY_MONETIZATION_ROAS', 'GOAL_7DAY_MONETIZATION_ROAS'},
              'IAP': {'GOAL_1DAY_PURCHASE_ROAS', 'GOAL_7DAY_PURCHASE_ROAS', 'GOAL_7DAY_LONGTERM_PURCHASE_ROAS',
                      'GOAL_14DAY_LONGTERM_PURCHASE_ROAS', 'GOAL_30DAY_LONGTERM_PURCHASE_ROAS'}}
+
+
+SMART_PLATFORM = 'SMART_DELIVERY_PLATFORM_EDITION_MINI_GAME_PROMOTION'
+# (monetization, mini_game_promotion_spec field, corresponding conversion asset goal)
+SMART_GOALS = {
+    'SMART_DELIVERY_GOAL_FIRST_DAY_MONETIZATION': ('IAA', 'first_day_monetization_roi', 'GOAL_1DAY_MONETIZATION_ROAS'),
+    'SMART_DELIVERY_GOAL_SEVEN_DAY_MONETIZATION': ('IAA', 'seven_day_monetization_roi', 'GOAL_7DAY_MONETIZATION_ROAS'),
+    'SMART_DELIVERY_GOAL_MINI_GAME_FIRST_DAY_PURCHASE_ROI': ('IAP', 'first_day_purchase_roi', 'GOAL_1DAY_PURCHASE_ROAS'),
+    'SMART_DELIVERY_GOAL_SEVEN_DAY_PURCHASE': ('IAP', 'seven_day_purchase_roi', 'GOAL_7DAY_PURCHASE_ROAS'),
+}
+
+
+def is_smart(row):
+    return bool(row.get('smart_delivery_platform'))
+
+
+def validate_smart_scene(scene, monetization=None):
+    if (not isinstance(scene, dict) or set(scene) != {'smart_delivery_goal', 'smart_delivery_goal_spec', 'conversion_id_list'}
+            or scene.get('smart_delivery_goal') not in SMART_GOALS):
+        raise ValueError('Use a supported mini-game smart goal, goal specification and conversion_id_list.')
+    mode, field, _ = SMART_GOALS[scene['smart_delivery_goal']]
+    if monetization is not None and monetization != mode:
+        raise ValueError('Smart delivery goal is incompatible with IAA/IAP mode.')
+    goals = scene['smart_delivery_goal_spec']
+    if not isinstance(goals, dict) or set(goals) != {'mini_game_promotion_spec'}:
+        raise ValueError('Only mini_game_promotion_spec is enabled for smart mini-game delivery.')
+    values = goals['mini_game_promotion_spec']
+    if not isinstance(values, dict) or set(values) != {'register_cost', field}:
+        raise ValueError('Smart mini-game parameters require register_cost and exactly the selected ROI field.')
+    integer(values['register_cost']);ratio(values[field])
+    ids = scene['conversion_id_list']
+    if not isinstance(ids, list) or len(ids) != 1:
+        raise ValueError('This smart mini-game entry supports one explicit conversion asset.')
+    integer(ids[0])
+    return field
+
+
+def smart_scene_patch(row, *, roi_value=None, bid_yuan=None):
+    import copy
+    if row.get('smart_delivery_platform') != SMART_PLATFORM:
+        raise ValueError('This smart entry supports only the mini-game promotion platform.')
+    scene = copy.deepcopy(row.get('smart_delivery_scene_spec'))
+    field = validate_smart_scene(scene)
+    values = scene['smart_delivery_goal_spec']['mini_game_promotion_spec']
+    if roi_value is not None: values[field] = ratio(roi_value)
+    if bid_yuan is not None: values['register_cost'] = money(bid_yuan)
+    return {'smart_delivery_scene_spec': scene}
+
 
 
 def integer(value):
@@ -71,6 +121,22 @@ def check_patch(patch, creative=False, create=False, monetization=None):
         if 'gender' in target and target['gender'] not in (['MALE'], ['FEMALE'], []): raise ValueError('Tencent gender is MALE/FEMALE array, not an Oceanengine enum.')
     for name in ('deep_conversion_worth_rate', 'deep_conversion_worth_advanced_rate'):
         if name in patch: ratio(patch[name])
+    if 'smart_delivery_platform' in patch and patch['smart_delivery_platform'] != SMART_PLATFORM:
+        raise ValueError('Only the supported mini-game smart platform is enabled.')
+    if 'smart_delivery_scene_spec' in patch:
+        validate_smart_scene(patch['smart_delivery_scene_spec'], monetization)
+        if create and patch.get('smart_delivery_platform') != SMART_PLATFORM:
+            raise ValueError('Smart creation must explicitly select its smart delivery platform.')
+    if create and patch.get('smart_delivery_platform') == SMART_PLATFORM:
+        field = validate_smart_scene(patch.get('smart_delivery_scene_spec'), monetization)
+        scene = patch['smart_delivery_scene_spec']
+        values = scene['smart_delivery_goal_spec']['mini_game_promotion_spec']
+        if patch.get('conversion_id') != scene['conversion_id_list'][0] or patch.get('bid_amount') != values['register_cost']:
+            raise ValueError('Smart scene conversion and base bid must match the marketing unit.')
+        regular = patch.get('deep_conversion_spec', {}).get('deep_conversion_worth_spec', {})
+        expected_goal = SMART_GOALS[scene['smart_delivery_goal']][2]
+        if regular.get('goal') != expected_goal or regular.get('expected_roi') != values[field]:
+            raise ValueError('Smart scene and deep-conversion ROI must select the same goal and ratio.')
     spec = patch.get('deep_conversion_spec') or {}
     if not isinstance(spec, dict): raise ValueError('Deep conversion specification must be an object.')
     for name in ('deep_conversion_worth_spec', 'deep_conversion_worth_advanced_spec'):
@@ -103,6 +169,9 @@ def validate(op, args):
     if op == 'tencent_conversions': required |= {'query'};allowed |= {'query'}
     if op == 'tencent_upload': required |= {'kind', 'filename', 'base64'};allowed |= {'kind', 'filename', 'base64'}
     if op == 'tencent_history': allowed |= {'limit'}
+    if op == 'tencent_inventory': allowed |= {'delivery'}
+    if op == 'tencent_inventory' and args.get('delivery', 'all') not in ('all', 'standard', 'smart'):
+        raise ValueError('Use all, standard or smart delivery inventory.')
     if not required <= set(args) or set(args) - allowed: raise ValueError('Unexpected or missing Tencent arguments.')
     for field in ('account_id', 'adgroup_id', 'dynamic_creative_id'):
         if field in args: integer(args[field])

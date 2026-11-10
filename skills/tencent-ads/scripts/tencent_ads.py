@@ -159,16 +159,17 @@ def main():
     parser.add_argument('--run-id');parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--config', type=Path)
     sub = parser.add_subparsers(dest='command', required=True)
-    for name in ('status', 'authorize', 'inventory', 'funds', 'history'): sub.add_parser(name)
+    for name in ('status', 'authorize', 'funds', 'history'): sub.add_parser(name)
+    sub.add_parser('inventory').add_argument('--delivery', choices=['all', 'standard', 'smart'], default='all')
     c = sub.add_parser('configure')
     origin = c.add_mutually_exclusive_group(required=True)
     origin.add_argument('--base-url')
     origin.add_argument('--from-oceanengine-config', type=Path, help='Explicitly reuse the same team gateway connection; no account/OAuth scope is copied.')
     c.add_argument('--key-file', type=Path)
     c.add_argument('--access', choices=['read_only', 'operator'], default='read_only');c.add_argument('--overwrite', action='store_true')
-    for name in ('new-adgroup', 'new-creative'):
+    for name in ('new-adgroup', 'new-smart', 'new-creative'):
         p = sub.add_parser(name);p.add_argument('--args-file', type=Path, required=True)
-        if name == 'new-adgroup': p.add_argument('--mode', choices=['IAA', 'IAP'], required=True)
+        if name in ('new-adgroup', 'new-smart'): p.add_argument('--mode', choices=['IAA', 'IAP'], required=True)
         else: p.add_argument('--adgroup-id', type=int, required=True)
     for name in ('update-adgroup', 'update-creative'):
         p = sub.add_parser(name);p.add_argument('id', type=int);p.add_argument('--patch-file', type=Path, required=True)
@@ -211,6 +212,7 @@ def main():
     account = dict(selection, account_id=args.account);command = args.command
     if command in ('inventory', 'funds', 'history', 'report', 'materials', 'conversions'):
         payload = dict(account)
+        if command == 'inventory': payload['delivery'] = args.delivery
         if hasattr(args, 'query_file'): payload['query'] = json.loads(args.query_file.read_text())
         if command == 'report': payload['hourly'] = args.hourly
         if command == 'materials': payload['kind'] = args.kind
@@ -220,8 +222,11 @@ def main():
     steps = []
     if command == 'authorize': op, payload = 'tencent_authorize', dict(selection)
     elif command.startswith('new-'):
-        op = 'tencent_' + command.replace('-', '_');payload = dict(account, payload=json.loads(args.args_file.read_text()))
-        if command == 'new-adgroup': payload['monetization'] = args.mode
+        op = 'tencent_new_adgroup' if command == 'new-smart' else 'tencent_' + command.replace('-', '_')
+        payload = dict(account, payload=json.loads(args.args_file.read_text()))
+        if command in ('new-adgroup', 'new-smart'): payload['monetization'] = args.mode
+        if command == 'new-smart' and payload['payload'].get('smart_delivery_platform') != schema.SMART_PLATFORM:
+            raise ValueError('new-smart requires an explicit supported smart platform and scene; ordinary fallback is forbidden.')
         else: payload['adgroup_id'] = args.adgroup_id
     elif command == 'upload':
         raw = args.file.read_bytes();safe = 'material-' + hashlib.sha256(raw).hexdigest()[:12] + args.file.suffix.lower()
@@ -241,7 +246,13 @@ def main():
         if command != 'delete':
             if command.startswith('update-'): patch = json.loads(args.patch_file.read_text())
             elif command in ('start', 'pause'): patch = {'configured_status': 'AD_STATUS_NORMAL' if command == 'start' else 'AD_STATUS_SUSPEND'}
-            elif command in ('budget', 'bid'): patch = {'daily_budget' if command == 'budget' else 'bid_amount': schema.money(args.value)}
+            elif command in ('budget', 'bid'):
+                patch = {'daily_budget' if command == 'budget' else 'bid_amount': schema.money(args.value)}
+                if command == 'bid':
+                    inv = read(client, 'tencent_inventory', account)['data']
+                    group = next((r for r in inv['adgroups'] if int(r['adgroup_id']) == args.id), None)
+                    if group is None: raise ValueError('Tencent marketing unit not found in configured game scope.')
+                    if schema.is_smart(group): patch = schema.smart_scene_patch(group, bid_yuan=args.value)
             elif command == 'schedule': patch = {'time_series': args.mask}
             elif command == 'dates':
                 patch = {'end_date': args.end}
@@ -250,10 +261,13 @@ def main():
                 inv = read(client, 'tencent_inventory', account)['data']
                 group = next((r for r in inv['adgroups'] if int(r['adgroup_id']) == args.id), None)
                 if group is None: raise ValueError('Tencent marketing unit not found in configured game scope.')
-                spec = group.get('deep_conversion_spec') or {};fields = [k for k in ('deep_conversion_worth_spec', 'deep_conversion_worth_advanced_spec') if spec.get(k)]
-                if len(fields) != 1: raise ValueError('Existing ROI goal is ambiguous or absent; inspect conversion configuration first.')
-                field = fields[0];patch = {'deep_conversion_spec': {field: {'goal': spec[field]['goal'], 'expected_roi': schema.ratio(args.value)}}}
-                if spec.get('deep_conversion_type'): patch['deep_conversion_spec']['deep_conversion_type'] = spec['deep_conversion_type']
+                if schema.is_smart(group):
+                    patch = schema.smart_scene_patch(group, roi_value=args.value)
+                else:
+                    spec = group.get('deep_conversion_spec') or {};fields = [k for k in ('deep_conversion_worth_spec', 'deep_conversion_worth_advanced_spec') if spec.get(k)]
+                    if len(fields) != 1: raise ValueError('Existing ROI goal is ambiguous or absent; inspect conversion configuration first.')
+                    field = fields[0];patch = {'deep_conversion_spec': {field: {'goal': spec[field]['goal'], 'expected_roi': schema.ratio(args.value)}}}
+                    if spec.get('deep_conversion_type'): patch['deep_conversion_spec']['deep_conversion_type'] = spec['deep_conversion_type']
             else: raise ValueError('Unsupported Tencent command.')
             payload['patch'] = patch
     if not steps: steps = [{'op': op, 'args': payload}]

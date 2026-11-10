@@ -123,3 +123,6 @@ OAuth Token 和操作人 `user_token` 是两种凭证。腾讯创建接口若返
 - 微信小游戏新客增长场景显式配置 `marketing_sub_goal=MARKETING_SUB_GOAL_MINI_GAME_NEW_CUSTOMER_GROWTH`；平台也可能要求 `targeting` 和 `bid_amount`。基础转化出价以分计，与深度 expected_roi 分别核对，不擅自覆盖用户 ROI。
 - 营销单元的空 end_date 可能回读为字符串 `0`；仅这两个无结束日期的表示可等价，其他日期与预算/状态仍严格核对。创建已返回 adgroup_id 后遇 mismatch，先核对该 ID，不能重建父单元。
 - `DYNAMIC_CREATIVE_TYPE_COMMON` 要求 creative_template_id；程序化组件使用 `DYNAMIC_CREATIVE_TYPE_PROGRAM`，仍须通过目标账户 `creative_template/get` 的 use_new_version=true 和实际营销四元组读取规格。品牌组件必填，常见要求512×512、≤400KB的真实品牌图。品牌跳转支持范围与广告主跳转不同，不把小游戏主跳转直接塞进品牌组件。没有合法品牌素材时保留暂停父单元，向用户取得正确图标/品牌资产后续建创意；不复用其他游戏标识。
+
+
+已验收：微信小游戏可在 `automatic_site_enabled=false` 且显式 `site_set` 排除 `SITE_SET_CHANNELS` 后，用 PROGRAM 动态创意、原视频/封面、自定义品牌名称+512图及同游戏 main_jump_info 完成暂停创建，无需绑定视频号。不能把包含视频号的自动版位组合所报 WechatChannelsSpec 必填，推广为所有广告必须绑定视频号。现有 adgroups/update 不提供版位字段时，先说明需要创建替代暂停单元，保留原单元暂停；不可忽略未知字段后声称版位已改，最终必须回读 site_set、预算/ROI、父子关系及双方暂停状态。

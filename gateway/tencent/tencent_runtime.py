@@ -33,6 +33,13 @@ class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs): return None
 
 
+def token_host(cfg):
+    host = cfg.get('oauth_token_host', 'api.e.qq.com')
+    if host not in ('api.e.qq.com', 'developers.e.qq.com'):
+        raise Rejected('Use an approved Tencent OAuth token hostname.')
+    return host
+
+
 def token_remote_ip(cfg):
     value = cfg.get('oauth_token_remote_ip')
     if value is None: return None
@@ -47,7 +54,7 @@ def token_remote_ip(cfg):
 class PinnedHTTPSConnection(http.client.HTTPSConnection):
     """Connect to an owner-verified node; HTTPSConnection retains domain SNI/TLS checks."""
     def __init__(self, host, *, remote_ip, **kwargs):
-        if host != 'api.e.qq.com': raise Rejected('OAuth pinning is limited to the Tencent token host.')
+        if host not in ('api.e.qq.com', 'developers.e.qq.com'): raise Rejected('OAuth pinning is limited to the Tencent token host.')
         super().__init__(host, **kwargs)
         self._create_connection = lambda address, timeout, source_address: socket.create_connection(
             (remote_ip, 443), timeout, source_address)
@@ -97,6 +104,7 @@ def load_config(root, *, require_accounts=True, profile_id=None):
         raise Rejected('Tencent callback must be HTTPS without credentials, an explicit port, query or fragment.')
     if url.path != '/manage/v1/tencent/oauth/callback': raise Rejected('Use the installed Tencent callback path.')
     token_remote_ip(cfg)
+    token_host(cfg)
     accounts = cfg.get('accounts', {})
     if not isinstance(accounts, dict) or (require_accounts and not accounts): raise Rejected('Configure Tencent account/game allowlists.')
     for key, account in accounts.items():
@@ -162,7 +170,7 @@ def fetch_json(request, *, remote_ip=None):
 
 def token_request(cfg, grant):
     query = dict(grant, client_id=int(cfg['client_id']), client_secret=cfg['client_secret'])
-    request = Request('https://api.e.qq.com/oauth/token?' + urlencode(query))
+    request = Request('https://' + token_host(cfg) + '/oauth/token?' + urlencode(query))
     remote_ip = token_remote_ip(cfg)
     result = fetch_json(request, remote_ip=remote_ip) if remote_ip else fetch_json(request)
     if result.get('code') != 0:
@@ -292,7 +300,7 @@ def authorize_url(root, cfg):
         state = prefix + secrets.token_urlsafe(32)
         save(file, {'state_hash': hashlib.sha256(state.encode()).hexdigest(), 'expires_at': time.time() + 1800,
                     'client_id': str(cfg['client_id']), 'status': 'issued',
-                    'token_remote_ip': token_remote_ip(cfg)})
+                    'token_remote_ip': token_remote_ip(cfg), 'token_host': token_host(cfg)})
     query = {'client_id': cfg['client_id'], 'redirect_uri': cfg['redirect_uri'], 'state': state}
     return 'https://developers.e.qq.com/oauth/authorize?' + urlencode(query)
 
@@ -312,6 +320,8 @@ def callback(root, query):
         digest = hashlib.sha256(given.encode()).hexdigest()
         if time.time() > state['expires_at'] or not secrets.compare_digest(digest, state['state_hash']): raise Rejected('Tencent state invalid or expired.')
         if state.get('client_id', str(cfg['client_id'])) != str(cfg['client_id']): raise Rejected('Tencent application changed after link creation.')
+        if state.get('token_host', 'api.e.qq.com') != token_host(cfg):
+            raise Rejected('Tencent OAuth token host changed after link creation; request a fresh link.')
         if state.get('token_remote_ip') != token_remote_ip(cfg):
             raise Rejected('Tencent OAuth remote address changed after link creation; request a fresh link.')
         if state.get('status', 'issued') != 'issued' or (path / 'tokens.json').exists():

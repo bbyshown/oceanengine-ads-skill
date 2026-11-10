@@ -436,3 +436,23 @@ class OAuthNodePinTests(unittest.TestCase):
             runtime.token_request(dict(config(), oauth_token_remote_ip='8.8.8.8'), {'grant_type': 'authorization_code'})
         self.assertEqual(fetch.call_args.kwargs, {'remote_ip': '8.8.8.8'})
         self.assertEqual(runtime.urlsplit(fetch.call_args.args[0].full_url).hostname, 'api.e.qq.com')
+
+
+class OAuthTokenHostTests(unittest.TestCase):
+    def test_only_tencent_hosts_allowed(self):
+        self.assertEqual(runtime.token_host({}), 'api.e.qq.com')
+        self.assertEqual(runtime.token_host({'oauth_token_host':'developers.e.qq.com'}), 'developers.e.qq.com')
+        for host in ('example.com', 'api.e.qq.com.evil.test', 'api.e.qq.com:443', ''):
+            with self.assertRaises(runtime.Rejected):runtime.token_host({'oauth_token_host':host})
+
+    def test_configured_host_preserves_pin_and_tls_domain(self):
+        cfg=dict(config(),oauth_token_host='developers.e.qq.com',oauth_token_remote_ip='8.8.8.8')
+        result={'code':0,'data':dict(access_token='a',refresh_token='r',access_token_expires_in=1000,refresh_token_expires_in=2000)}
+        with patch.object(runtime,'fetch_json',return_value=result) as fetch:
+            runtime.token_request(cfg,{'grant_type':'authorization_code'})
+        self.assertEqual(runtime.urlsplit(fetch.call_args.args[0].full_url).hostname,'developers.e.qq.com')
+        self.assertEqual(fetch.call_args.kwargs,{'remote_ip':'8.8.8.8'})
+        connection=runtime.PinnedHTTPSConnection('developers.e.qq.com',remote_ip='8.8.8.8',timeout=3)
+        with patch.object(runtime.socket,'create_connection') as connect,patch.object(connection._context,'wrap_socket') as wrap:
+            connection.connect()
+        wrap.assert_called_once_with(connect.return_value,server_hostname='developers.e.qq.com')

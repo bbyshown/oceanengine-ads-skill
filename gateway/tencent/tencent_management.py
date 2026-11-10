@@ -83,6 +83,7 @@ def execute(op, args, *, root, api=None):
                 'authorization_error_code': state.get('provider_error_code'),
                 'authorization_diagnostic': state.get('provider_diagnostic', {}),
                 'oauth_token_remote_ip': runtime.token_remote_ip(cfg),
+                'oauth_token_host': runtime.token_host(cfg),
                 'management_enabled': bool(cfg.get('accounts')), 'managed_account_ids': sorted(cfg.get('accounts', {})),
                 'live_account_verification': 'pending', 'create_policy': 'paused_only', 'automatic_pause': False}
     cfg = runtime.load_config(root, require_accounts=op != 'tencent_authorize', profile_id=profile_id)

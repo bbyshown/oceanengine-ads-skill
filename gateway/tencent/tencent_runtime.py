@@ -2,6 +2,9 @@
 import contextlib
 import fcntl
 import hashlib
+import http.client
+import ipaddress
+import socket
 import json
 import os
 import re
@@ -9,7 +12,7 @@ from pathlib import Path
 import secrets
 import time
 from urllib.parse import urlencode, urlsplit
-from urllib.request import Request, build_opener, HTTPRedirectHandler
+from urllib.request import Request, build_opener, HTTPRedirectHandler, HTTPSHandler, ProxyHandler
 import uuid
 
 
@@ -17,8 +20,50 @@ class Rejected(ValueError):
     pass
 
 
+class OAuthRejected(Rejected):
+    def __init__(self, provider_code, diagnostic=None):
+        self.diagnostic = diagnostic or {}
+        code = str(provider_code)
+        self.provider_code = int(code) if re.fullmatch(r'-?[0-9]{1,10}', code) else None
+        super().__init__(f'Tencent OAuth rejected: {self.provider_code}' if self.provider_code is not None
+                         else 'Tencent OAuth rejected without a numeric error code.')
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs): return None
+
+
+def token_remote_ip(cfg):
+    value = cfg.get('oauth_token_remote_ip')
+    if value is None: return None
+    try:
+        address = ipaddress.ip_address(value)
+        if not address.is_global: raise ValueError()
+    except (ValueError, TypeError):
+        raise Rejected('Tencent OAuth remote address must be a verified public IP.') from None
+    return str(address)
+
+
+class PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """Connect to an owner-verified node; HTTPSConnection retains domain SNI/TLS checks."""
+    def __init__(self, host, *, remote_ip, **kwargs):
+        if host != 'api.e.qq.com': raise Rejected('OAuth pinning is limited to the Tencent token host.')
+        super().__init__(host, **kwargs)
+        self._create_connection = lambda address, timeout, source_address: socket.create_connection(
+            (remote_ip, 443), timeout, source_address)
+
+
+class PinnedHTTPSHandler(HTTPSHandler):
+    def __init__(self, remote_ip):
+        super().__init__()
+        self.remote_ip = remote_ip
+
+    def https_open(self, request):
+        if urlsplit(request.full_url).path != '/oauth/token':
+            raise Rejected('OAuth pinning is limited to the Tencent token endpoint.')
+        return self.do_open(lambda host, **kw: PinnedHTTPSConnection(
+            host, remote_ip=self.remote_ip, **kw), request,
+            context=self._context, check_hostname=self._check_hostname)
 
 
 def save(path, value):
@@ -51,6 +96,7 @@ def load_config(root, *, require_accounts=True, profile_id=None):
     if url.scheme != 'https' or not url.hostname or url.username or url.query or url.fragment or url.port:
         raise Rejected('Tencent callback must be HTTPS without credentials, an explicit port, query or fragment.')
     if url.path != '/manage/v1/tencent/oauth/callback': raise Rejected('Use the installed Tencent callback path.')
+    token_remote_ip(cfg)
     accounts = cfg.get('accounts', {})
     if not isinstance(accounts, dict) or (require_accounts and not accounts): raise Rejected('Configure Tencent account/game allowlists.')
     for key, account in accounts.items():
@@ -103,18 +149,36 @@ def scrub(value, cfg, tokens=None):
     return clean(value)
 
 
-def fetch_json(request):
+def fetch_json(request, *, remote_ip=None):
     # Never propagate urllib exceptions, whose URL includes OAuth credentials.
     try:
-        with build_opener(NoRedirect()).open(request, timeout=45) as response: return json.load(response)
+        handlers = [NoRedirect()]
+        if remote_ip:
+            handlers.extend([ProxyHandler({}), PinnedHTTPSHandler(remote_ip)])
+        with build_opener(*handlers).open(request, timeout=45) as response: return json.load(response)
     except Exception:
         raise RuntimeError('Tencent transport failed; URL and credentials withheld. Inspect the original job before retrying a write.') from None
 
 
 def token_request(cfg, grant):
     query = dict(grant, client_id=int(cfg['client_id']), client_secret=cfg['client_secret'])
-    result = fetch_json(Request('https://api.e.qq.com/oauth/token?' + urlencode(query)))
-    if result.get('code') != 0: raise Rejected('Tencent OAuth rejected: ' + str(result.get('code')))
+    request = Request('https://api.e.qq.com/oauth/token?' + urlencode(query))
+    remote_ip = token_remote_ip(cfg)
+    result = fetch_json(request, remote_ip=remote_ip) if remote_ip else fetch_json(request)
+    if result.get('code') != 0:
+        # Keep selected business diagnostics, never the raw response or request URL.
+        diagnostic = {}
+        for key in ('message', 'message_cn', 'trace_id', 'request_id'):
+            value = result.get(key)
+            if not isinstance(value, str):
+                continue
+            value = scrub(value, cfg, grant)
+            value = re.sub(r'https?://[^\s]+', '[url withheld]', value)
+            value = re.sub(r'[A-Za-z0-9_+-]{24,}', '[identifier withheld]', value) if key.startswith('message') else value
+            if key in ('trace_id', 'request_id') and not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', value):
+                continue
+            diagnostic[key] = value[:500]
+        raise OAuthRejected(result.get('code'), diagnostic)
     token = result.get('data') or {}
     for field in ('access_token', 'refresh_token', 'access_token_expires_in', 'refresh_token_expires_in'):
         if not token.get(field): raise RuntimeError('Tencent OAuth returned incomplete token data; inspect the original exchange before retrying.')
@@ -227,7 +291,8 @@ def authorize_url(root, cfg):
         prefix = 'txp1_' + cfg['_profile_id'] + '.' if cfg.get('_profile_id') else ''
         state = prefix + secrets.token_urlsafe(32)
         save(file, {'state_hash': hashlib.sha256(state.encode()).hexdigest(), 'expires_at': time.time() + 1800,
-                    'client_id': str(cfg['client_id']), 'status': 'issued'})
+                    'client_id': str(cfg['client_id']), 'status': 'issued',
+                    'token_remote_ip': token_remote_ip(cfg)})
     query = {'client_id': cfg['client_id'], 'redirect_uri': cfg['redirect_uri'], 'state': state}
     return 'https://developers.e.qq.com/oauth/authorize?' + urlencode(query)
 
@@ -247,6 +312,8 @@ def callback(root, query):
         digest = hashlib.sha256(given.encode()).hexdigest()
         if time.time() > state['expires_at'] or not secrets.compare_digest(digest, state['state_hash']): raise Rejected('Tencent state invalid or expired.')
         if state.get('client_id', str(cfg['client_id'])) != str(cfg['client_id']): raise Rejected('Tencent application changed after link creation.')
+        if state.get('token_remote_ip') != token_remote_ip(cfg):
+            raise Rejected('Tencent OAuth remote address changed after link creation; request a fresh link.')
         if state.get('status', 'issued') != 'issued' or (path / 'tokens.json').exists():
             raise Rejected('Tencent state was already consumed; existing credentials were preserved.')
         if query.get('error') or not query.get('authorization_code'):
@@ -255,8 +322,14 @@ def callback(root, query):
         state['status'] = 'exchange_pending';save(file, state)
         try:
             token = token_request(cfg, {'grant_type': 'authorization_code', 'authorization_code': query['authorization_code'], 'redirect_uri': cfg['redirect_uri']})
-        except Rejected:
-            state['status'] = 'rejected';save(file, state);raise
+        except Rejected as error:
+            state['status'] = 'rejected'
+            if isinstance(error, OAuthRejected):
+                state['provider_error_code'] = error.provider_code
+                state['provider_diagnostic'] = error.diagnostic
+                state['exchange_completed_at'] = time.time()
+            save(file, state)
+            raise
         except Exception:
             state['status'] = 'uncertain';save(file, state);raise
         token['client_id'] = str(cfg['client_id'])

@@ -82,9 +82,28 @@ def read(client, op, args):
     return result
 
 
+def validate_steps(steps):
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict) or not {'op', 'args'} <= step.keys() or step.keys() - {'op', 'args', 'adgroup_from'}:
+            raise ValueError('Each Tencent step requires op and args.')
+        args = step['args']
+        if 'adgroup_from' in step:
+            source = step['adgroup_from']
+            if (step['op'] != 'tencent_new_creative' or not isinstance(args, dict)
+                    or 'adgroup_id' in args or type(source) is not int or not 1 <= source <= index):
+                raise ValueError('adgroup_from must be an earlier, one-based batch step and replaces adgroup_id.')
+            parent = steps[source - 1]
+            if (parent['op'] != 'tencent_new_adgroup'
+                    or any(parent['args'].get(key) != args.get(key) for key in ('account_id', 'profile_id'))):
+                raise ValueError('adgroup_from must point to a new marketing unit in the same account and profile.')
+            schema.validate(step['op'], dict(args, adgroup_id=1))
+        else:
+            schema.validate(step['op'], args)
+
+
 def run(client, steps, run_id, state=STATE):
     if not re.fullmatch('[A-Za-z0-9_-]{8,64}', run_id): raise ValueError('Use an8–64 character stable run-id.')
-    for step in steps: schema.validate(step['op'], step['args'])
+    validate_steps(steps)
     path = state / 'operations' / run_id / 'receipt.json'
     digest = hashlib.sha256(json.dumps(steps, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     binding = hashlib.sha256(client.cfg['base_url'].rstrip('/').encode()).hexdigest()
@@ -97,15 +116,28 @@ def run(client, steps, run_id, state=STATE):
         entry = receipt['jobs'][i]
         if entry.get('verified'): continue
         if 'id' not in entry:
-            started = client.request('jobs', dict(step, idempotency_key='tencent9-' + run_id + '-' + str(i)))
+            args = step['args']
+            if 'adgroup_from' in step:
+                parent = receipt['jobs'][step['adgroup_from'] - 1]
+                identifier = parent['response']['result']['data'].get('adgroup_id')
+                schema.integer(identifier)
+                args = dict(args, adgroup_id=identifier)
+            started = client.request('jobs', {'op': step['op'], 'args': args,
+                                              'idempotency_key': 'tencent9-' + run_id + '-' + str(i)})
             entry['id'] = started['job_id'];save(path, receipt)
         row = wait(client, entry['id']);entry['response'] = row;receipt['status'] = row['status'];save(path, receipt)
         if row['status'] in ('queued', 'running'): return receipt
         result = row.get('result') or {}
-        if row['status'] != 'done' or result.get('code') != 0: raise RuntimeError('Tencent operation stopped; inspect original receipt/job/history before retrying.')
+        if row['status'] != 'done' or result.get('code') != 0:
+            if row['status'] == 'done':
+                receipt['status'] = 'rejected' if result.get('code') is not None else 'uncertain'
+                save(path, receipt)
+            raise RuntimeError('Tencent operation stopped; inspect original receipt/job/history before retrying.')
         if step['op'] not in ('tencent_upload', 'tencent_authorize') and not result.get('data', {}).get('verified'):
+            receipt['status'] = 'unverified';save(path, receipt)
             raise RuntimeError('Tencent write has no verified readback.')
         if step['op'] == 'tencent_upload' and not any(result.get('data', {}).get(k) for k in ('image_id', 'video_id')):
+            receipt['status'] = 'unverified';save(path, receipt)
             raise RuntimeError('Tencent upload returned no material identifier.')
         entry['verified'] = True;save(path, receipt)
     receipt['status'] = 'done';save(path, receipt)
@@ -179,7 +211,9 @@ def main():
         steps = json.loads(args.manifest.read_text())
         if not isinstance(steps, list) or not 1 <= len(steps) <= 100: raise ValueError('Provide1–100 creation steps.')
         for step in steps:
-            if step.get('op') not in ('tencent_new_adgroup', 'tencent_new_creative') or step['args'].get('account_id') != args.account: raise ValueError('Creation batch must stay in one explicit Tencent account.')
+            if (not isinstance(step, dict) or not isinstance(step.get('args'), dict)
+                    or step.get('op') not in ('tencent_new_adgroup', 'tencent_new_creative')
+                    or step['args'].get('account_id') != args.account): raise ValueError('Creation batch must stay in one explicit Tencent account.')
             if step['args'].get('profile_id') != args.profile: raise ValueError('Creation batch must stay in one explicit Tencent authorization profile.')
     else:
         creative = command.endswith('creative') or getattr(args, 'level', '') == 'creative'
@@ -205,9 +239,10 @@ def main():
             payload['patch'] = patch
     if not steps: steps = [{'op': op, 'args': payload}]
     for step in steps:
-        if step['op'] in ('tencent_new_adgroup', 'tencent_new_creative'):
-            step['args']['payload']['configured_status'] = 'AD_STATUS_SUSPEND'
-    for step in steps: schema.validate(step['op'], step['args'])
+        payload = step['args'].get('payload')
+        if step['op'] in ('tencent_new_adgroup', 'tencent_new_creative') and isinstance(payload, dict):
+            payload['configured_status'] = 'AD_STATUS_SUSPEND'
+    validate_steps(steps)
     run_id = args.run_id or time.strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:8]
     if args.dry_run:
         safe_steps = [{**s, 'args': {k: v for k, v in s['args'].items() if k != 'base64'}} for s in steps]

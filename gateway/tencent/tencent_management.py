@@ -80,6 +80,9 @@ def execute(op, args, *, root, api=None):
                 'authorized': (folder / 'tokens.json').exists(), 'operations': sorted(OPS),
                 'profile_id': profile_id, 'client_id': str(cfg['client_id']) if cfg else None,
                 'authorization_status': state_name, 'link_expires_at': state.get('expires_at'),
+                'authorization_error_code': state.get('provider_error_code'),
+                'authorization_diagnostic': state.get('provider_diagnostic', {}),
+                'oauth_token_remote_ip': runtime.token_remote_ip(cfg),
                 'management_enabled': bool(cfg.get('accounts')), 'managed_account_ids': sorted(cfg.get('accounts', {})),
                 'live_account_verification': 'pending', 'create_policy': 'paused_only', 'automatic_pause': False}
     cfg = runtime.load_config(root, require_accounts=op != 'tencent_authorize', profile_id=profile_id)

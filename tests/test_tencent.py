@@ -363,6 +363,42 @@ class TencentTests(unittest.TestCase):
         other=copy.deepcopy(steps);other[0]['args']['account_id']=456
         with self.assertRaises(ValueError):client.run(gateway,other,'client-resume-test',self.root)
 
+    def test_batch_attaches_creative_to_verified_new_parent_and_resumes(self):
+        class Jobs:
+            cfg = {'base_url': 'https://gateway.example.com'}
+
+            def __init__(self):
+                self.calls = []
+
+            def request(self, route, body):
+                if route == 'job':
+                    return {'status': 'done', 'result': {'code': 0, 'data': {'verified': True, 'adgroup_id': 732}}}
+                self.calls.append(body)
+                if len(self.calls) == 2:
+                    raise TimeoutError()
+                return {'job_id': str(len(self.calls))}
+
+        steps = [
+            {'op': 'tencent_new_adgroup', 'args': {'account_id': 123, 'monetization': 'IAA',
+                                                'payload': {'adgroup_name': 'Group'}}},
+            {'op': 'tencent_new_creative', 'adgroup_from': 1, 'args': {'account_id': 123,
+                'payload': {'dynamic_creative_name': 'Creative', 'creative_components': {}}}},
+        ]
+        gateway = Jobs()
+        with self.assertRaises(TimeoutError):
+            client.run(gateway, steps, 'paired-batch-test', self.root)
+        receipt = client.run(gateway, steps, 'paired-batch-test', self.root)
+        self.assertEqual(receipt['status'], 'done')
+        self.assertEqual(len(gateway.calls), 3)
+        self.assertEqual(gateway.calls[1], gateway.calls[2])
+        self.assertEqual(gateway.calls[2]['args']['adgroup_id'], 732)
+        self.assertNotIn('adgroup_from', gateway.calls[2])
+        invalid = copy.deepcopy(steps)
+        invalid[1]['args']['profile_id'] = 'other-team'
+        with self.assertRaises(ValueError):
+            client.run(gateway, invalid, 'invalid-pair-test', self.root)
+        self.assertEqual(len(gateway.calls), 3)
+
     def test_invalid_last_batch_step_prevents_any_submission(self):
         class Jobs:
             cfg={'base_url':'https://gateway.example.com'}
@@ -373,3 +409,30 @@ class TencentTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class OAuthNodePinTests(unittest.TestCase):
+    def test_pin_keeps_domain_tls_and_connects_only_to_selected_ip(self):
+        import ssl
+        connection = runtime.PinnedHTTPSConnection('api.e.qq.com', remote_ip='8.8.8.8', timeout=3)
+        self.assertTrue(connection._context.check_hostname)
+        self.assertEqual(connection._context.verify_mode, ssl.CERT_REQUIRED)
+        with patch.object(runtime.socket, 'create_connection') as connect, patch.object(connection._context, 'wrap_socket') as wrap:
+            connection.connect()
+        connect.assert_called_once_with(('8.8.8.8', 443), 3, None)
+        wrap.assert_called_once_with(connect.return_value, server_hostname='api.e.qq.com')
+
+    def test_invalid_pins_rejected_before_any_token_request(self):
+        for value in ('198.18.3.252', '127.0.0.1', 'https://example.com', '', '10.0.0.1'):
+            with self.subTest(value=value), patch.object(runtime, 'fetch_json') as fetch:
+                with self.assertRaises(runtime.Rejected):
+                    runtime.token_request(dict(config(), oauth_token_remote_ip=value), {})
+                fetch.assert_not_called()
+
+    def test_pin_passed_only_to_token_transport(self):
+        result = {'code': 0, 'data': {'access_token': 'a', 'refresh_token': 'r',
+                  'access_token_expires_in': 1000, 'refresh_token_expires_in': 2000}}
+        with patch.object(runtime, 'fetch_json', return_value=result) as fetch:
+            runtime.token_request(dict(config(), oauth_token_remote_ip='8.8.8.8'), {'grant_type': 'authorization_code'})
+        self.assertEqual(fetch.call_args.kwargs, {'remote_ip': '8.8.8.8'})
+        self.assertEqual(runtime.urlsplit(fetch.call_args.args[0].full_url).hostname, 'api.e.qq.com')

@@ -533,3 +533,39 @@ class ReadbackDateTests(unittest.TestCase):
         self.assertFalse(management.verified_fields({'end_date':'2026-12-01'},{'end_date':''}))
         self.assertFalse(management.verified_fields({'end_date':'0'},{'end_date':'2026-12-01'}))
         self.assertFalse(management.verified_fields({'end_date':'0'},{'end_date':''},creative=True))
+
+
+class ExistingGatewayConnectionTests(unittest.TestCase):
+    def test_explicit_import_copies_connection_but_not_oceanengine_scope(self):
+        with tempfile.TemporaryDirectory() as d:
+            source=Path(d)/'oceanengine.json'
+            client.save(source,{'base_url':'https://gateway.example.test','key':'a'*64,'access_mode':'operator',
+                                'accounts':{'other':123},'default_account':'other','profile_id':'other-platform'})
+            before=source.read_bytes()
+            cfg=client.connection_from_oceanengine(source)
+            self.assertEqual(cfg,{'base_url':'https://gateway.example.test','key':'a'*64,'access_mode':'read_only'})
+            self.assertEqual(source.read_bytes(),before)
+            self.assertEqual(client.connection_from_oceanengine(source,'operator')['access_mode'],'operator')
+            source.chmod(0o644)
+            if client.os.name=='posix':
+                with self.assertRaises(ValueError):client.connection_from_oceanengine(source)
+
+    def test_import_cli_never_prompts_or_prints_key_and_preserves_source(self):
+        import io
+        from contextlib import redirect_stdout
+        with tempfile.TemporaryDirectory() as d:
+            source=Path(d)/'oceanengine.json';target=Path(d)/'tencent.json'
+            client.save(source,{'base_url':'https://gateway.example.test','key':'b'*64,'access_mode':'operator'})
+            before=source.read_bytes();output=io.StringIO()
+            argv=['tencent_ads.py','--config',str(target),'configure','--from-oceanengine-config',str(source)]
+            with patch.object(client.sys,'argv',argv),patch.object(client.getpass,'getpass') as prompt,redirect_stdout(output):
+                client.main()
+            prompt.assert_not_called()
+            self.assertNotIn('b'*64,output.getvalue())
+            self.assertEqual(client.Gateway(target).cfg['access_mode'],'read_only')
+            self.assertEqual(source.read_bytes(),before)
+            self.assertEqual(target.stat().st_mode&0o777,0o600)
+            with patch.object(client.sys,'argv',argv),self.assertRaises(ValueError):client.main()
+            argv=['tencent_ads.py','--config',str(source),'configure','--from-oceanengine-config',str(source),'--overwrite']
+            with patch.object(client.sys,'argv',argv),self.assertRaises(ValueError):client.main()
+            self.assertEqual(source.read_bytes(),before)

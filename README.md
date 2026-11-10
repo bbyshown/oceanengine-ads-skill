@@ -31,7 +31,7 @@ codex plugin add game-ads@bbyshown-ads
 
 在 Codex 插件目录选择「小游戏投放工具」来源，即可找到该插件。插件包含巨量和腾讯两个 Skill，需要本机 Python 3.9+ 和团队网关配置。公共目录上架需另行提交审核，本仓库提供团队目录安装。已用独立 Skill 安装的用户仍可沿用原入口。
 
-## 腾讯广告同事试用（1.1.0）
+## 腾讯广告同事试用（1.1.1）
 
 先按[腾讯接入与升级](skills/tencent-ads/references/onboarding.md)更新实际安装的插件，再连接管理员提供的网关、第三方profile和账户。腾讯使用独立配置，不自动继承巨量权限。
 

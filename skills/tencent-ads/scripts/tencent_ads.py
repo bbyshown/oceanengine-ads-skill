@@ -37,7 +37,7 @@ class NoRedirect(HTTPRedirectHandler):
 class Gateway:
     def __init__(self, path=None):
         path = Path(path or os.environ.get('TENCENT_MANAGEMENT_CONFIG', str(DEFAULT_CONFIG))).expanduser()
-        if not path.exists(): raise ValueError('Tencent gateway profile missing; run configure. Do not paste keys into chat.')
+        if not path.exists(): raise ValueError('Tencent connection missing; run configure. If the same team gateway is already configured for Oceanengine, explicitly use configure --from-oceanengine-config PATH. Do not paste keys into chat.')
         if os.name == 'posix' and path.stat().st_mode & 0o077: raise ValueError('Gateway profile permissions must be 0600.')
         self.cfg = json.loads(path.read_text());self.validate(self.cfg)
 
@@ -144,6 +144,14 @@ def run(client, steps, run_id, state=STATE):
     return receipt
 
 
+def connection_from_oceanengine(path, access='read_only'):
+    """Explicitly pair to the same team gateway, without importing platform scope."""
+    source = Gateway(path).cfg
+    cfg = {'base_url': source['base_url'], 'key': source['key'], 'access_mode': access}
+    Gateway.validate(cfg)
+    return cfg
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--account', type=int, help='Explicit Tencent account ID; never an Oceanengine alias.')
@@ -152,7 +160,11 @@ def main():
     parser.add_argument('--config', type=Path)
     sub = parser.add_subparsers(dest='command', required=True)
     for name in ('status', 'authorize', 'inventory', 'funds', 'history'): sub.add_parser(name)
-    c = sub.add_parser('configure');c.add_argument('--base-url', required=True);c.add_argument('--key-file', type=Path)
+    c = sub.add_parser('configure')
+    origin = c.add_mutually_exclusive_group(required=True)
+    origin.add_argument('--base-url')
+    origin.add_argument('--from-oceanengine-config', type=Path, help='Explicitly reuse the same team gateway connection; no account/OAuth scope is copied.')
+    c.add_argument('--key-file', type=Path)
     c.add_argument('--access', choices=['read_only', 'operator'], default='read_only');c.add_argument('--overwrite', action='store_true')
     for name in ('new-adgroup', 'new-creative'):
         p = sub.add_parser(name);p.add_argument('--args-file', type=Path, required=True)
@@ -176,8 +188,15 @@ def main():
     if args.command == 'configure':
         target = args.config or Path(os.environ.get('TENCENT_MANAGEMENT_CONFIG', str(Path.home() / '.config/tencent-ads/connection.json')))
         if target.exists() and not args.overwrite: raise ValueError('Configuration exists; inspect it before explicit --overwrite.')
-        key = args.key_file.read_text().strip() if args.key_file else getpass.getpass('Management key (hidden): ').strip()
-        cfg = {'base_url': args.base_url, 'key': key, 'access_mode': args.access};Gateway.validate(cfg);save(target, cfg)
+        if args.from_oceanengine_config:
+            if args.key_file: raise ValueError('Do not combine connection import with --key-file.')
+            if args.from_oceanengine_config.expanduser().resolve() == target.expanduser().resolve():
+                raise ValueError('Tencent destination must not overwrite the Oceanengine source configuration.')
+            cfg = connection_from_oceanengine(args.from_oceanengine_config, args.access)
+        else:
+            key = args.key_file.read_text().strip() if args.key_file else getpass.getpass('Management key (hidden): ').strip()
+            cfg = {'base_url': args.base_url, 'key': key, 'access_mode': args.access}
+        Gateway.validate(cfg);save(target.expanduser(), cfg)
         print('Tencent local gateway profile saved with0600 permissions. No advertising changed.');return
     client = Gateway(args.config)
     selection = {'profile_id': args.profile} if args.profile else {}

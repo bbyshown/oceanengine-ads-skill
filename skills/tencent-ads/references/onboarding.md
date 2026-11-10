@@ -10,7 +10,7 @@ codex plugin add game-ads@bbyshown-ads
 codex plugin list --marketplace bbyshown-ads --json
 ```
 
-尚未添加目录时，先运行 `codex plugin marketplace add bbyshown/oceanengine-ads-skill --ref main`。本次发布版本为 **1.1.0**；以 list 返回的版本、installed、enabled 为准。更新后新开聊天或重新加载技能，确认调用的是新缓存目录中的脚本。只 `git pull` 不会自动更新另一个已安装的插件副本。
+尚未添加目录时，先运行 `codex plugin marketplace add bbyshown/oceanengine-ads-skill --ref main`。本次发布版本为 **1.1.1**；以 list 返回的版本、installed、enabled 为准。更新后新开聊天或重新加载技能，确认调用的是新缓存目录中的脚本。只 `git pull` 不会自动更新另一个已安装的插件副本。
 
 独立克隆安装：在仓库运行 `git pull --ff-only`，将 `skills/tencent-ads` 整体更新到实际技能目录，保留 scripts/references。不要覆盖本机连接配置和业务工作区回执。巨量与腾讯使用不同的连接配置、状态目录和账户参数。
 
@@ -26,6 +26,21 @@ python3 "$T/scripts/tencent_ads.py" --profile customer-b --account 123 inventory
 ```
 
 密钥只在隐藏提示或本地 `--key-file` 中输入，不放入命令行值/聊天。首次配置默认 read_only；只有管理员授予本次操作权限后，才切到 operator（已有配置显式重配时需 `--overwrite`）。服务端 write_enabled 仍须由网关所有者控制。一个共享管理密钥不构成同事级隔离。
+
+### 已有巨量配置，腾讯提示 connection missing
+
+如果管理员确认巨量与腾讯使用的是**同一个团队网关和管理密钥**，可显式复用本机已有连接，不需要在聊天传密钥：
+
+```sh
+python3 "$T/scripts/tencent_ads.py" configure \
+  --from-oceanengine-config "$HOME/.config/oceanengine-ads/connection.json"
+python3 "$T/scripts/tencent_ads.py" --profile customer-b status
+python3 "$T/scripts/tencent_ads.py" --profile customer-b --account 123 inventory
+```
+
+替换实际profile和账户ID；源配置在其他路径时使用实际路径。导入只复制base_url/key，默认read_only，不继承源operator权限、巨量账户别名、游戏或OAuth档案。源文件保持原样，目标0600；已有腾讯配置需先检查，明确重配时才用 `--overwrite`。若两平台网关或管理密钥不同，仍按原方式独立configure。
+
+`Tencent connection missing` 只说明本机找不到连接文件，不能据此断言服务器未接腾讯、要求重新申请开发者权限或重复OAuth。服务器是否已授权应在连接成功后用**显式第三方profile**的status和真实只读账户接口判断。
 
 接入检查：
 

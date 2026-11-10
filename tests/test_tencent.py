@@ -475,10 +475,12 @@ class OperatorCredentialTests(unittest.TestCase):
 
     def test_callback_saves_only_scoped_credential_without_enabling_ads(self):
         old_tokens = (self.folder/'tokens.json').read_bytes()
-        result = runtime.user_callback(self.root, self.query)
+        result = runtime.user_callback(self.root, dict(self.query, wx_id='fake-wechat-id'))
         cfg = runtime.load_config(self.root, profile_id='test-operator')
         self.assertTrue(result['user_authorized'])
         self.assertNotIn('fake-operator-secret', json.dumps(result))
+        self.assertNotIn('fake-wechat-id', json.dumps(result))
+        self.assertNotIn('fake-wechat-id', (self.folder/'config.json').read_text())
         self.assertNotIn('fake-operator-secret', (self.folder/'user-authorization.json').read_text())
         self.assertEqual(cfg['accounts']['123']['user_token'],'fake-operator-secret')
         self.assertFalse(cfg['write_enabled'])

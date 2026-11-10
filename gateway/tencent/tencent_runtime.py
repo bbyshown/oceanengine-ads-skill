@@ -378,7 +378,7 @@ def user_authorize_url(root, cfg, account_id):
 
 def user_callback(root, query):
     """Receive Tencent's operator credential without returning it or enabling writes."""
-    if set(query) - {'state', 'user_status', 'user_token', 'expire_time'}:
+    if set(query) - {'state', 'user_status', 'user_token', 'expire_time', 'wx_id'}:
         raise Rejected('Unexpected Tencent user callback fields.')
     given = query.get('state', '')
     if not isinstance(given, str) or not given.startswith('txu1_') or '.' not in given:

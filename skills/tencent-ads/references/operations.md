@@ -113,3 +113,5 @@ OAuth Token 和操作人 `user_token` 是两种凭证。腾讯创建接口若返
 网关运行包需安装 `tencent/user/callback` GET 路由到 `tencent_runtime.user_callback`（严格拒绝重复查询字段、错误响应不回显参数），并关闭管理路由的访问日志。网关所有者在已授权且登记账户的显式档案上调用 `tencent_runtime.user_authorize_url(root, cfg, account_id)`，生成腾讯官方 `https://ad.qq.com/account-center/single/user-authorize` 组件链接，包含 HTTPS redirect_uri 与一次性 state。链接有效 30 分钟；用户本人完成腾讯确认后，回调只在 user_status=2、user_token及expire_time合法时保存到该档案的选定账户。其余状态表示认证未完成，不保存令牌。
 
 令牌只留在服务器 0600 config.json，原 OAuth 凭证、账户范围和 write_enabled 不变。签名 status 的 operator_credentials 仅显示配置/有效性及过期时间。重复/过期/错档案回调拒绝；令牌过期在写请求前停止。拿到令牌仍不等于广告创建成功，应回读库存，并依原拒绝回执处理纠正后的暂停批次。
+
+操作人回调兼容腾讯附加的 `wx_id` 字段，仅忽略，不写入档案或回显；不要因该字段拒绝有效的 user_status=2 回调。

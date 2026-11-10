@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import sys
 import time
+from urllib.error import URLError, HTTPError
 from urllib.parse import urlsplit
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 import uuid
@@ -68,8 +69,16 @@ class Gateway:
 
 def wait(client, job_id, timeout=35):
     deadline = time.monotonic() + timeout
+    failures = 0
     while True:
-        row = client.request('job', {'job_id': job_id})
+        try:
+            row = client.request('job', {'job_id': job_id})
+        except (TimeoutError, ConnectionError, URLError) as error:
+            if isinstance(error,HTTPError) and error.code not in (429,500,502,503,504): raise
+            failures += 1
+            if failures >= 3 or time.monotonic() >= deadline:
+                raise RuntimeError('Tencent job status unavailable; inspect original job '+job_id+'; do not submit a new operation.') from None
+            time.sleep(.5);continue
         if row['status'] not in ('queued', 'running') or time.monotonic() >= deadline: return row
         time.sleep(.5)
 

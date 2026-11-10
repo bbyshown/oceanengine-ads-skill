@@ -836,8 +836,22 @@ class OrganizationCursorTests(unittest.TestCase):
         last={'code':0,'data':{'list':[{'account_id':456}],'cursor_page_info':{'has_more':False}}}
         from unittest.mock import Mock
         api=Mock(side_effect=[first,last]);self.assertEqual(len(onboarding.organization_accounts(api)),2)
+        self.assertNotIn('cursor',api.call_args_list[0].args[1])
         self.assertEqual(api.call_args_list[1].args[1]['cursor'],10)
-        for bad in ({'code':71002},first):
+        for bad in ({'code':71002},first,{'code':0,'data':{'list':[],'cursor_page_info':{'has_more':False,'total_number':3759}}}):
             api=Mock(side_effect=[first,bad])
             with self.assertRaises(runtime.Rejected):onboarding.organization_accounts(api)
         self.assertFalse(api.call_args.kwargs.get('post',False))
+
+
+class JobPollTransportTests(unittest.TestCase):
+    def test_retry_queries_original_job_without_resubmitting(self):
+        from unittest.mock import Mock
+        api=Mock();api.request.side_effect=[TimeoutError(),{'status':'done'}]
+        with patch.object(client.time,'sleep'):
+            self.assertEqual(client.wait(api,'original-job')['status'],'done')
+        self.assertEqual(api.request.call_args_list[0],api.request.call_args_list[1])
+        self.assertEqual(api.request.call_args.args[0],'job')
+        api.request.side_effect=[TimeoutError()]*3
+        with patch.object(client.time,'sleep'),self.assertRaisesRegex(RuntimeError,'original-job'):
+            client.wait(api,'original-job')

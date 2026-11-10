@@ -24,16 +24,19 @@ def rows(api, endpoint, params):
 
 
 def organization_accounts(api):
-    output = []; cursor = 0; seen = set()
+    output = []; cursor = None; seen = set()
     for _ in range(100):
-        result = api('organization_account_relation/get', {'pagination_mode':'PAGINATION_MODE_CURSOR',
-            'cursor':cursor, 'page_size':100, 'fields':['account_id','corporation_name']})
+        params={'pagination_mode':'PAGINATION_MODE_CURSOR','page_size':100,'fields':['account_id','corporation_name']}
+        if cursor is not None: params['cursor']=cursor
+        result = api('organization_account_relation/get',params)
         data=result.get('data') or {}; info=data.get('cursor_page_info')
         if (result.get('code') != 0 or not isinstance(data.get('list'),list) or not isinstance(info,dict)
                 or type(info.get('has_more')) is not bool):
             raise runtime.Rejected('Tencent organization cursor discovery failed; no partial account list.')
         output += data['list']
         if not info['has_more']:
+            total=info.get('total_number')
+            if type(total) is int and total != len(output): raise runtime.Rejected('Tencent organization list count mismatch; no partial account list.')
             identifiers=[r.get('account_id') for r in output]
             if len(set(identifiers)) != len(identifiers): raise runtime.Rejected('Duplicate organization account IDs; inspect discovery.')
             return output

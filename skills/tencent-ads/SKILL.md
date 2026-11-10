@@ -23,7 +23,7 @@ description: 通过已授权的腾讯广告MKTAPI v3.0管理网关管理微信�
 
 ## 多账户与操作人
 
-按[批量接入](references/onboarding.md#批量接入与操作人复用)执行：`accounts`发现、`register-accounts`按明确游戏清单批量登记、`bind-operator`批量关联。user_token对应操作人，不要求每账户扫码。新操作人或过期才`operator-authorize`一次，回调自动保存；账户仍须OAuth可见、组织关系和游戏范围核验。每次共享凭据POST前实时核验组织关系，不能仅凭同主体复制令牌。旧凭据迁移由所有者在核验后处理，不能自动从别的账户挑一个。
+按[批量接入](references/onboarding.md#批量接入与操作人复用)执行：`accounts`发现、`register-accounts`按明确游戏清单批量登记、`bind-operator`批量关联。user_token对应操作人，不要求每账户扫码。新操作人或过期才`operator-authorize`一次，回调自动保存；账户仍须OAuth可见、组织关系和游戏范围核验。用户提供目标账户和游戏即可，由助手生成批量清单，不要求用户手写JSON或逐账户登录服务器保存。每次共享凭据POST前实时核验组织关系，不能仅凭同主体复制令牌。旧凭据迁移由所有者在核验后处理，不能自动从别的账户挑一个。
 
 ## 已验收的创建入口
 

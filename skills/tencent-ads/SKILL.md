@@ -5,7 +5,7 @@ description: 通过已授权的腾讯广告MKTAPI v3.0管理网关管理微信�
 
 # 腾讯广告微信小游戏投放
 
-使用本技能的`tencent_ads.py`调用兼容v9网关。先读[接入与操作](references/operations.md)；申请权限或核对平台差异时读[官方依据与接入检查](references/integration.md)。路径使用技能绝对路径，运行目录使用当前业务工作区。
+使用本技能的`tencent_ads.py`调用兼容v9网关。同事首次接入或更新先读[接入与升级](references/onboarding.md)；日常读[接入与操作](references/operations.md)；申请权限或核对平台差异时读[官方依据与接入检查](references/integration.md)。路径使用技能绝对路径，运行目录使用当前业务工作区。
 
 ## 平台与授权
 
@@ -20,6 +20,10 @@ description: 通过已授权的腾讯广告MKTAPI v3.0管理网关管理微信�
 令牌交换失败先查签名 `status.authorization_diagnostic`；5014 不足以判定角色问题。授权与令牌节点不一致的排查和所有者配置见操作参考的「OAuth 授权节点与令牌节点不一致」。
 
 创建接口报 11101 缺 `user_token` 时，走操作参考的「操作人认证与 user_token」；不要将其当成 OAuth 失败或组织角色不足。
+
+## 已验收的创建入口
+
+微信小游戏「注册＋首日付费 ROAS」IAP暂停测试，可用 `scripts/prepare_iap_batch.py` 离线生成完整的单元＋创意清单；参数、适用范围及 dry-run 见接入与升级。默认手动版位排除视频号、18岁以上，不代表用户已同意这些投放设置。只有清单确认、账户资产核验和用户业务授权齐备才提交。
 
 ## 日常操作
 

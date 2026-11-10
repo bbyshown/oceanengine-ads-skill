@@ -25,3 +25,19 @@ Linux服务端配置文件为`<网关根目录>/private/tencent/config.json`，o
 需要身份验证的账户可在该账户配置中加入user_token；不要把实际文件或Token提交Git。服务器按需刷新Token，未配置时Tencent状态返回configured=false，不读取或修改任何巨量凭证或广告。
 
 第三方应用多客户授权：所有者在服务器本地调用`provision_profile(root, "customer-b", client_id=..., client_secret=..., redirect_uri=...)`，该函数不暴露HTTP。新配置、Token、独占锁和审计使用`private/tencent/profiles/customer-b/`，不覆盖默认私有应用。签名Tencent操作可带`profile_id`，CLI对应`--profile customer-b`；callback直接交给`runtime.callback`，它按state分流。每个新客户用独立档案，已有授权和不确定交换均禁止覆盖，账户名单须授权后另行核验配置。
+
+## 操作人回调与网关集成
+
+OAuth与操作人认证是两种凭证。除已有OAuth路由，还须集成 `GET /manage/v1/tencent/user/callback`：对query使用parse_qsl，拒绝重复键，然后交给 `runtime.user_callback(root, query)`。仅返回该函数的脱敏结果；异常统一返回400且不回显参数/URL。管理路由关闭访问日志，响应设置 `Cache-Control: no-store` 和 `Referrer-Policy: no-referrer`。
+
+已登记账户的认证链接由网关所有者在服务器本地生成：
+
+```python
+cfg = runtime.load_config(root, profile_id="customer-b")
+link = runtime.user_authorize_url(root, cfg, 123)
+# 将link写入0600所有者回执，仅向本次授权用户提供，不写公共日志。
+```
+
+回调state绑定档案/应用/账户、30分钟、单次使用；仅user_status=2且令牌有效时保存到该账户配置的user_token/user_token_expires_at。wx_id允许但不保存。应用OAuth Token、账户白名单与write_enabled均不变。POST的user_token放在URL查询参数，JSON仅业务字段；不可在日志、异常或回执中暴露凭证。
+
+`status.operator_credentials` 只输出是否配置、过期时间与有效性。所有者须按业务授权临时控制write_enabled；用户本人认证不会自动启用广告写入。该附加模块不含独立HTTP服务器，安装/升级需同时验证上述两条回调路由。

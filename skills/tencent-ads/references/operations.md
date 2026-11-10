@@ -47,34 +47,13 @@ HMAC管理密钥通过隐藏提示输入，或`--key-file /本地文件`读取�
 
 写命令加`--dry-run`仅预览。客户端返回job queued/running表示尚未完成，不代表平台参数已生效。只有平台回读verified后才报告变更成功。预算修改不改变开关，启用某一层级也不会自动开启另一层级。
 
-## 请求文件
+## 请求文件与创建规格
 
-营销单元示例为注册目标，非已验收的IAA/IAP回收优化模板。具体优化目标、ROI深度配置、版位和资产需通过账户实际权限核对：
+首次测试优先用[同事接入](onboarding.md#3-生成已验收结构的暂停清单)的离线 `prepare_iap_batch.py` 生成完整IAP清单，再运行实际客户端 dry-run。不要沿用仅含注册目标的早期最小样例冒充已验收模板。该工具不会查询平台，因此账户、游戏、转化、素材及规格仍需只读核验。
 
-```json
-{
-  "adgroup_name":"微信小游戏_首测",
-  "marketing_goal":"MARKETING_GOAL_USER_GROWTH",
-  "marketing_carrier_type":"MARKETING_CARRIER_TYPE_WECHAT_MINI_GAME",
-  "marketing_carrier_detail":{"marketing_carrier_id":"wx0000000000000001"},
-  "marketing_asset_outer_spec":{"marketing_target_type":"MARKETING_TARGET_TYPE_WECHAT_MINI_GAME","marketing_asset_outer_id":"wx0000000000000001"},
-  "begin_date":"2026-11-05",
-  "end_date":"",
-  "time_series":"替换为336个1或明确时段位图",
-  "daily_budget":50000,
-  "bid_mode":"BID_MODE_OCPM",
-  "bid_amount":200,
-  "optimization_goal":"OPTIMIZATIONGOAL_APP_REGISTER",
-  "automatic_site_enabled":true,
-  "configured_status":"AD_STATUS_SUSPEND"
-}
-```
+营销单元使用实际营销四元组、转化配置、定向、整数分预算与基础转化出价；深度 expected_roi 独立使用比值。`automatic_site_enabled=false` 配合显式 site_set 可排除视频号。PROGRAM创意使用 description/video/brand/main_jump_info，品牌图与视频封面是两个不同素材；主跳转须指向同一个微信小游戏。COMMON创意需要具体 creative_template_id，不能用程序化模板参数直接替代。
 
-JSON中的50000分是500元；bid_amount=200是2元。示例时间/出价不构成投放建议。新建无论请求为何开关，服务器都强制暂停。不能用修改名字绕过营销唯一性校验。
-
-创意JSON使用`dynamic_creative_name`和`creative_components`：文本组件形如`description:[{"value":{"content":"实际文案"}}]`；视频组件形如`video:[{"value":{"video_id":"已上传ID","cover_id":"已上传封面ID"}}]`。品牌、图片、行动按钮、creative_template_id等以账户支持的创意规格为准，不能承诺最小样例在所有版位均可投。主跳转默认补同一微信小游戏，跨游戏或H5目的地会被拦截。小游戏监控参数按腾讯文档使用问号开头；巨量的点击宏不能直接复用。
-
-批量清单是1–100个`{"op":"tencent_new_adgroup或tencent_new_creative","args":{...}}`步骤，同一account_id，先全批校验再串行执行。创意可在 `args` 中填写已有的 `adgroup_id`，也可在步骤顶层填写 `"adgroup_from": 1`，引用同一清单内较早的第 1 个步骤（从 1 开始）。引用步骤必须是同一账户和授权档案的 `tencent_new_adgroup`，两种写法二选一。多个创意可以引用同一个营销单元。先用 `--dry-run` 检查清单。实际执行时，客户端等网关确认营销单元已暂停并完成回读后，再用真实 ID 创建创意。失败即停止，保留已成功的暂停对象；请求超时用原 `run-id` 恢复。
+批量清单为1–100个 `{"op":"tencent_new_adgroup或tencent_new_creative","args":{...}}` 步骤，同一account_id/profile_id。创意 `args.adgroup_id` 指向现有单元；或用步骤顶层 `"adgroup_from":1` 引用较早的第1个单元创建步骤（二选一）。父单元回读通过后才创建创意。失败即停止，保留已成功的暂停对象。超时按原run-id恢复；明确拒绝的参数纠正另行留存，不修改原回执。
 
 ## 报表
 

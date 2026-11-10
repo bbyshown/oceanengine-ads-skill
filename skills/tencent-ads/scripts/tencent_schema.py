@@ -5,10 +5,11 @@ from decimal import Decimal, InvalidOperation
 import re
 
 READS = {'tencent_status', 'tencent_inventory', 'tencent_funds', 'tencent_conversions',
-         'tencent_report', 'tencent_materials', 'tencent_history'}
+         'tencent_report', 'tencent_materials', 'tencent_history', 'tencent_discover_accounts'}
 WRITES = {'tencent_authorize', 'tencent_new_adgroup', 'tencent_new_creative', 'tencent_update_adgroup',
           'tencent_update_creative', 'tencent_delete_adgroup', 'tencent_delete_creative', 'tencent_upload'}
-OPS = READS | WRITES
+CONFIG_WRITES = {'tencent_register_accounts', 'tencent_bind_operator', 'tencent_operator_authorize'}
+OPS = READS | WRITES | CONFIG_WRITES
 GROUP_FIELDS = ['adgroup_id', 'adgroup_name', 'marketing_carrier_type', 'marketing_carrier_detail',
                 'configured_status', 'system_status', 'is_deleted', 'begin_date', 'end_date', 'time_series',
                 'daily_budget', 'bid_amount', 'bid_mode', 'optimization_goal', 'deep_conversion_spec',
@@ -157,6 +158,33 @@ def validate(op, args):
         args = {k: v for k, v in args.items() if k != 'profile_id'}
     if op in ('tencent_status', 'tencent_authorize'):
         if args: raise ValueError('This Tencent operation takes no account arguments.')
+        return
+    if op in CONFIG_WRITES or op == 'tencent_discover_accounts':
+        if op == 'tencent_operator_authorize':
+            if set(args) != {'operator_id'}: raise ValueError('Select one operator.')
+        elif op == 'tencent_bind_operator':
+            if set(args) != {'operator_id', 'account_ids'}: raise ValueError('Select operator and explicit account IDs.')
+        elif op == 'tencent_register_accounts':
+            if not {'accounts'} <= set(args) or set(args) - {'accounts','operator_id'}: raise ValueError('Use explicit account/game registrations.')
+            entries = args['accounts']
+            if not isinstance(entries,list) or not 1 <= len(entries) <= 100: raise ValueError('Register 1-100 accounts per batch.')
+            identifiers = []
+            for entry in entries:
+                if not isinstance(entry,dict) or set(entry) != {'account_id','mini_game_ids'}: raise ValueError('Registration needs account_id and mini_game_ids only.')
+                integer(entry['account_id']);identifiers.append(entry['account_id'])
+                games = entry['mini_game_ids']
+                if (not isinstance(games,list) or not 1 <= len(games) <= 32
+                        or any(not isinstance(g,str) or not re.fullmatch(r'wx[a-zA-Z0-9]{16}',g) for g in games)):
+                    raise ValueError('Select explicit WeChat wxAppIDs.')
+            if len(set(identifiers)) != len(identifiers): raise ValueError('Duplicate registration account IDs.')
+        elif set(args) - {'account_ids'}: raise ValueError('Discovery accepts optional explicit account IDs.')
+        if 'account_ids' in args:
+            ids=args['account_ids']
+            if not isinstance(ids,list) or not 1 <= len(ids) <= 100: raise ValueError('Select 1-100 accounts.')
+            for identifier in ids: integer(identifier)
+            if len(set(ids)) != len(ids): raise ValueError('Duplicate account IDs.')
+        if 'operator_id' in args and (not isinstance(args['operator_id'],str) or not re.fullmatch(r'[a-z][a-z0-9_-]{2,47}',args['operator_id'])):
+            raise ValueError('Use a valid local operator ID.')
         return
     required = {'account_id'};allowed = set(required)
     if op in ('tencent_new_adgroup',): required |= {'payload', 'monetization'};allowed |= {'payload', 'monetization'}

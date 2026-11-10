@@ -36,4 +36,4 @@
 
 `new-smart` 是客户端命令，网关实际操作仍为 **`tencent_new_adgroup`**，payload显式带上述平台和scene。不存在 `smart_delivery`、`new_smart_delivery`、`smart_create` 或单独的AIM+项目层op。不要用猜测的op探测功能，也不要依据未知op的账户错误推断腾讯智投未实现。以签名status的operations、smart_delivery_support_version和客户端dry-run的实际映射核对。
 
-当前 `live_account_verification` 是固定返回pending的历史提示，不是可配置的权限开关，也不阻断创建；不能要求管理员将其改为完成。账户真实可见性以inventory/conversions等成功回执核验。实际写入需要本机operator、所选profile的write_enabled=true、账户/游戏范围及该账户自己的有效操作人凭据；这些条件与智投字段支持是不同检查项。未经具体业务授权不要为排错开启写入。
+旧版 `live_account_verification` 是固定返回pending的历史提示，新版改为not_checked_by_status，不是可配置的权限开关，也不阻断创建；不能要求管理员将其改为完成。账户真实可见性以inventory/conversions等成功回执核验。实际写入需要本机operator、所选profile的write_enabled=true、账户/游戏范围及该账户关联的有效操作人凭据（可批量关联，经平台核验组织权限）；这些条件与智投字段支持是不同检查项。未经具体业务授权不要为排错开启写入。

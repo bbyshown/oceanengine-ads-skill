@@ -113,6 +113,15 @@ def load_config(root, *, require_accounts=True, profile_id=None):
         games = account.get('mini_game_ids')
         if not isinstance(games, list) or not games or any(not isinstance(g, str) or not g.startswith('wx') for g in games):
             raise Rejected('Each Tencent account requires its authorized WeChat mini-game IDs.')
+    operators = cfg.get('operators', {})
+    if not isinstance(operators, dict): raise Rejected('Tencent operators must be an object.')
+    for name, value in operators.items():
+        operator_name(name)
+        if not isinstance(value, dict): raise Rejected('Tencent operator must be an object.')
+    for account in accounts.values():
+        if 'operator_id' in account:
+            operator_name(account['operator_id'])
+            if account['operator_id'] not in operators: raise Rejected('Tencent account references an unknown operator.')
     if profile_id: cfg['_profile_id'] = profile_name(profile_id)
     elif '_profile_id' in cfg: raise Rejected('Profile selection must be explicit.')
     return cfg
@@ -147,6 +156,7 @@ def scrub(value, cfg, tokens=None):
     hidden = [cfg.get('client_secret', '')]
     hidden += [v for k, v in (tokens or {}).items() if k in banned and isinstance(v, str)]
     hidden += [a.get('user_token', '') for a in cfg.get('accounts', {}).values()]
+    hidden += [a.get('user_token', '') for a in cfg.get('operators', {}).values()]
     def clean(v):
         if isinstance(v, dict): return {k: clean(x) for k, x in v.items() if str(k).lower() not in banned}
         if isinstance(v, list): return [clean(x) for x in v]
@@ -351,12 +361,49 @@ def callback(root, query):
             'message': 'Authorization completed. Tokens saved in the selected profile; existing profiles preserved. Return to the chat to verify accounts.'}
 
 
-def user_authorize_url(root, cfg, account_id):
+def operator_name(value):
+    if not isinstance(value, str) or not re.fullmatch(r'[a-z][a-z0-9_-]{2,47}', value):
+        raise Rejected('Use a local operator ID of 3-48 lowercase letters, digits, underscore or hyphen.')
+    return value
+
+
+def operator_credential(cfg, account_id=None, operator_id=None):
+    account = cfg.get('accounts', {}).get(str(account_id), {})
+    selected = operator_id if operator_id is not None else account.get('operator_id')
+    if selected is not None:
+        operator_name(selected)
+        credential = cfg.get('operators', {}).get(selected)
+        if not credential: raise Rejected('Tencent operator is not configured in the selected profile.')
+    else:
+        credential = account  # Legacy per-account credentials remain readable; never guess another account.
+    return credential
+
+
+def valid_operator(credential):
+    return bool(credential.get('user_token')) and (credential.get('user_token_expires_at') is None or credential['user_token_expires_at'] > time.time())
+
+
+def require_organization(result, account_ids):
+    data = result.get('data') or {}; rows = data.get('list')
+    if result.get('code') != 0 or not isinstance(rows, list):
+        raise Rejected('Tencent operator organization verification failed; no permission fallback.')
+    if (len(rows) != len(account_ids) or {r.get('account_id') for r in rows} != set(account_ids)
+            or any(r.get('authentication_status') != 'AUTHENTICATION_STATUS_AUTHENTICATED' for r in rows)):
+        raise Rejected('Tencent operator is not organization-authenticated for every selected account.')
+
+
+def operator_authorize_url(root, cfg, operator_id):
+    operator_name(operator_id)
+    return user_authorize_url(root, cfg, operator_id=operator_id)
+
+
+def user_authorize_url(root, cfg, account_id=None, *, operator_id=None):
     """Owner-only link issuance for an already scoped account; no advertising write."""
     if not cfg.get('_profile_id'):
         raise Rejected('Select an explicit Tencent identity profile.')
-    account_id = str(account_id)
-    if account_id not in cfg.get('accounts', {}):
+    account_id = str(account_id) if account_id is not None else None
+    if operator_id is not None: operator_name(operator_id)
+    if operator_id is None and account_id not in cfg.get('accounts', {}):
         raise Rejected('Tencent user authorization account is outside scope.')
     with locked(root, cfg) as path:
         if not (path / 'tokens.json').exists():
@@ -370,10 +417,10 @@ def user_authorize_url(root, cfg, account_id):
         expires_at = int(time.time()) + 1800
         save(file, {'state_hash': hashlib.sha256(state.encode()).hexdigest(),
                     'expires_at': expires_at, 'client_id': str(cfg['client_id']),
-                    'account_id': account_id, 'status': 'issued'})
+                    **({'operator_id': operator_id} if operator_id is not None else {'account_id': account_id}), 'status': 'issued'})
     return {'authorization_url': 'https://ad.qq.com/account-center/single/user-authorize?' +
             urlencode({'redirect_uri': callback_url, 'state': state}), 'expires_at': expires_at,
-            'profile_id': cfg['_profile_id'], 'account_id': account_id}
+            'profile_id': cfg['_profile_id'], **({'operator_id': operator_id} if operator_id is not None else {'account_id': account_id})}
 
 
 def user_callback(root, query):
@@ -392,7 +439,7 @@ def user_callback(root, query):
         if (state.get('status') != 'issued' or time.time() > state.get('expires_at', 0)
                 or state.get('client_id') != str(cfg['client_id'])
                 or not secrets.compare_digest(hashlib.sha256(given.encode()).hexdigest(), state.get('state_hash', ''))
-                or state.get('account_id') not in cfg['accounts']):
+                or (not state.get('operator_id') and state.get('account_id') not in cfg['accounts'])):
             raise Rejected('Tencent user state expired, consumed or mismatched.')
         status = query.get('user_status')
         if status not in ('0', '1', '2'): raise Rejected('Invalid Tencent user verification status.')
@@ -410,34 +457,50 @@ def user_callback(root, query):
             raise Rejected('Tencent operator credential is missing, malformed or expired.')
         # Read current configuration under the same lock; preserve account scope and write switch.
         current = json.loads((path / 'config.json').read_text())
-        account = current['accounts'][state['account_id']]
-        account.update(user_token=token, user_token_expires_at=int(expiry))
+        if state.get('operator_id'):
+            name = operator_name(state['operator_id'])
+            credential = current.setdefault('operators', {}).setdefault(name, {})
+        else:
+            credential = current['accounts'][state['account_id']]
+        credential.update(user_token=token, user_token_expires_at=int(expiry))
         save(path / 'config.json', current)
         state.update(status='authorized', user_status=2, completed_at=time.time(), token_expires_at=int(expiry))
         save(file, state)
     return {'user_authorized': True, 'user_status': 2, 'provider': 'tencent', 'profile_id': profile_id,
-            'account_id': state['account_id'], 'expires_at': int(expiry),
+            **({'operator_id': state['operator_id']} if state.get('operator_id') else {'account_id': state['account_id']}), 'expires_at': int(expiry),
             'message': 'Operator credential saved securely. Return to the chat to continue the paused advertisement test.'}
 
 
 class API:
     def __init__(self, root, cfg): self.root, self.cfg = Path(root), cfg
 
-    def __call__(self, endpoint, params, post=False, upload=None):
+    def organization_authentication(self, operator_id, account_ids):
+        return self('user_organization_authentication/get', {'account_id_list': account_ids,
+            'fields': ['account_id', 'authentication_status']}, operator_id=operator_id)
+
+    def __call__(self, endpoint, params, post=False, upload=None, *, operator_id=None):
         allowed = {'adgroups/get', 'adgroups/add', 'adgroups/update', 'adgroups/delete',
                    'dynamic_creatives/get', 'dynamic_creatives/add', 'dynamic_creatives/update', 'dynamic_creatives/delete',
                    'daily_reports/get', 'hourly_reports/get', 'funds/get', 'advertiser/get',
-                   'images/add', 'videos/add', 'images/get', 'videos/get', 'conversions/get'}
+                   'images/add', 'videos/add', 'images/get', 'videos/get', 'conversions/get', 'user_organization_authentication/get', 'organization_account_relation/get'}
         if endpoint not in allowed: raise Rejected('Tencent endpoint is not enabled.')
         token = access_token(self.root, self.cfg)
         common = {'access_token': token, 'timestamp': int(time.time()), 'nonce': uuid.uuid4().hex}
         headers = {};body = None;data = dict(params)
+        if endpoint == 'user_organization_authentication/get':
+            if post or operator_id is None or 'user_token' in data: raise Rejected('Select an operator without passing credentials.')
+            credential = operator_credential(self.cfg, operator_id=operator_id)
+            if not valid_operator(credential): raise Rejected('Tencent operator credential missing or expired; verify the operator once.')
+            data['user_token'] = credential['user_token']
         if post:
             account = self.cfg['accounts'][str(params['account_id'])]
-            if account.get('user_token'):
-                if account.get('user_token_expires_at') is not None and account['user_token_expires_at'] <= time.time():
-                    raise Rejected('Tencent operator credential expired; request fresh operator verification.')
-                common['user_token'] = account['user_token']
+            credential = operator_credential(self.cfg, params['account_id'])
+            if account.get('operator_id'):
+                if not valid_operator(credential): raise Rejected('Tencent operator credential missing or expired; verify the operator once.')
+                require_organization(self.organization_authentication(account['operator_id'], [params['account_id']]), [params['account_id']])
+            if credential.get('user_token'):
+                if not valid_operator(credential): raise Rejected('Tencent operator credential expired; request fresh operator verification.')
+                common['user_token'] = credential['user_token']
             if upload:
                 field, filename, raw = upload;boundary = uuid.uuid4().hex
                 parts = []

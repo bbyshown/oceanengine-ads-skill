@@ -89,12 +89,17 @@ HMAC管理密钥通过隐藏提示输入，或`--key-file /本地文件`读取�
 
 OAuth Token 和操作人 `user_token` 是两种凭证。腾讯创建接口若返回 11101 缺少 `user_token`，不能推断用户不是主管理员或未加入组织；第三方应用同样需要此参数。不要重复 OAuth 或要求用户把令牌发到聊天。
 
-网关运行包需安装 `tencent/user/callback` GET 路由到 `tencent_runtime.user_callback`（严格拒绝重复查询字段、错误响应不回显参数），并关闭管理路由的访问日志。网关所有者在已授权且登记账户的显式档案上调用 `tencent_runtime.user_authorize_url(root, cfg, account_id)`，生成腾讯官方 `https://ad.qq.com/account-center/single/user-authorize` 组件链接，包含 HTTPS redirect_uri 与一次性 state。链接有效 30 分钟；用户本人完成腾讯确认后，回调只在 user_status=2、user_token及expire_time合法时保存到该档案的选定账户。其余状态表示认证未完成，不保存令牌。
+新版以“操作人”保存一次凭据：`operators[operator_id]` 持有 user_token/有效期，账户仅保存 `operator_id` 关联。同一操作人在同一第三方档案下可服务多个有组织认证关系的账户，不能要求每个广告账户重新扫码。OAuth范围、操作人组织关系、网关账户/游戏范围分别检查。
 
-令牌只留在服务器 0600 config.json，原 OAuth 凭证、账户范围和 write_enabled 不变。签名 status 的 operator_credentials 仅显示配置/有效性及过期时间。重复/过期/错档案回调拒绝；令牌过期在写请求前停止。拿到令牌仍不等于广告创建成功，应回读库存，并依原拒绝回执处理纠正后的暂停批次。
+`operator-authorize --operator team-main` 经签名任务生成官方认证组件链接，回执保存在0600本地文件；用户本人完成微信确认，`user_status=2` 后回调自动保存到操作人档案。state绑定档案、应用和本地operator ID、30分钟且单次使用。wx_id兼容但不保存/回显；user_token URL解码一次后使用。令牌有效期以平台回调为准，过期后按操作人更新一次，所有关联账户共用新值。不要要求在聊天粘贴令牌。
 
-操作人回调兼容腾讯附加的 `wx_id` 字段，仅忽略，不写入档案或回显；不要因该字段拒绝有效的 user_status=2 回调。
+用 `bind-operator --operator team-main --ids 123 456` 批量关联**已经登记**的账户；网关调用官方 `user_organization_authentication/get`，只有所有目标都为 AUTHENTICATION_STATUS_AUTHENTICATED 才保存。每次带共享操作人凭据的POST前再次实时核验该账户组织关系，未通过则不发送POST。主体名称相同不能代替这项检查，其他档案的令牌不能自动复用。该校验也不等于完整投放资格或广告创建验收。
 
+BM组织账户发现使用官方organization_account_relation/get，不把不带account_id的advertiser/get用于BM全量列表。账户发现/批量登记见[批量接入](onboarding.md#批量接入与操作人复用)。这些操作不创建广告、不改预算/启停、不打开服务端write_enabled；广告写入仍需本机operator和既有业务授权。签名status新增write_enabled、operators、operator_scope_version、registration_version；operator_credentials保持按账户输出兼容，但反映关联操作人的有效性。live_account_verification改为not_checked_by_status，status本身不做平台实时核验。
+
+旧账户内的凭据继续兼容读取，不会猜测其他账户令牌或静默回退。所有者可在实时核验后调用 `tencent_onboarding.migrate_legacy_operator`，生成0600备份、把指定旧凭据迁到操作人档案并关联显式账户，活动配置中只保存一次。迁移保留OAuth、游戏范围和写开关，并将旧账户式待认证链接标为superseded，避免迟到回调覆盖新关系。不同真实操作人分别建档；单HMAC团队连接不提供同事级身份隔离。
+
+官方依据：[腾讯认证公告](https://docs.qq.com/doc/DSVdkdk1LQ1hOam5n) 明确开发者保存员工与key关系，平台校验操作人与账户组织关系；[官方SDK组织认证接口](https://github.com/TencentAd/marketing-api-go-sdk/blob/master/docs/v3/UserOrganizationAuthenticationApi.md) 接受一个userToken和多个accountIdList。
 
 ### 已验证的小游戏建投注意事项
 

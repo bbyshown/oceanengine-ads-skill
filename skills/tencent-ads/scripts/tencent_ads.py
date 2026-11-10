@@ -53,7 +53,7 @@ class Gateway:
         if route not in ('jobs', 'job'): raise ValueError('Unsupported gateway route.')
         if route == 'jobs':
             schema.validate(body['op'], body['args'])
-            if body['op'] in schema.WRITES and self.cfg.get('access_mode', 'read_only') != 'operator':
+            if body['op'] in (schema.WRITES | schema.CONFIG_WRITES) and self.cfg.get('access_mode', 'read_only') != 'operator':
                 raise PermissionError('Profile is read_only; configure operator only for an authorized operator.')
         path = '/manage/v1/' + route
         raw = json.dumps(body, ensure_ascii=False, separators=(',', ':')).encode()
@@ -133,7 +133,7 @@ def run(client, steps, run_id, state=STATE):
                 receipt['status'] = 'rejected' if result.get('code') is not None else 'uncertain'
                 save(path, receipt)
             raise RuntimeError('Tencent operation stopped; inspect original receipt/job/history before retrying.')
-        if step['op'] not in ('tencent_upload', 'tencent_authorize') and not result.get('data', {}).get('verified'):
+        if step['op'] not in ('tencent_upload', 'tencent_authorize', 'tencent_operator_authorize') and not result.get('data', {}).get('verified'):
             receipt['status'] = 'unverified';save(path, receipt)
             raise RuntimeError('Tencent write has no verified readback.')
         if step['op'] == 'tencent_upload' and not any(result.get('data', {}).get(k) for k in ('image_id', 'video_id')):
@@ -161,6 +161,10 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     for name in ('status', 'authorize', 'funds', 'history'): sub.add_parser(name)
     sub.add_parser('inventory').add_argument('--delivery', choices=['all', 'standard', 'smart'], default='all')
+    p = sub.add_parser('accounts');p.add_argument('--ids', type=int, nargs='+');p.add_argument('--limit',type=int,default=10)
+    p = sub.add_parser('register-accounts');p.add_argument('--manifest', type=Path, required=True);p.add_argument('--operator')
+    p = sub.add_parser('bind-operator');p.add_argument('--operator', required=True);p.add_argument('--ids', type=int, nargs='+', required=True)
+    sub.add_parser('operator-authorize').add_argument('--operator', required=True)
     c = sub.add_parser('configure')
     origin = c.add_mutually_exclusive_group(required=True)
     origin.add_argument('--base-url')
@@ -202,6 +206,32 @@ def main():
     client = Gateway(args.config)
     selection = {'profile_id': args.profile} if args.profile else {}
     if args.command == 'status': print(json.dumps(read(client, 'tencent_status', selection), ensure_ascii=False, indent=2));return
+    if args.command == 'accounts':
+        payload=dict(selection)
+        if args.ids: payload['account_ids']=args.ids
+        if not 1 <= args.limit <= 100: raise ValueError('Use discovery limit 1-100.')
+        result=read(client, 'tencent_discover_accounts', payload)
+        details=STATE/('discovered-accounts-'+(args.profile or 'default')+'.json');save(details,result)
+        rows=result['data']['accounts']
+        print(json.dumps({'accounts':rows[:args.limit],'total':len(rows),'details_file':str(details.resolve()),
+            'discovery_grants_management':False,'discovery_source':result['data'].get('discovery_source')},ensure_ascii=False,indent=2));return
+    if args.command in ('register-accounts','bind-operator','operator-authorize'):
+        if not args.profile: raise ValueError('Select an explicit Tencent profile for onboarding.')
+        payload=dict(selection)
+        if args.command == 'register-accounts':
+            payload['accounts']=json.loads(args.manifest.read_text())
+            if args.operator:payload['operator_id']=args.operator
+        else:
+            payload['operator_id']=args.operator
+            if args.command == 'bind-operator':payload['account_ids']=args.ids
+        op={'register-accounts':'tencent_register_accounts','bind-operator':'tencent_bind_operator','operator-authorize':'tencent_operator_authorize'}[args.command]
+        schema.validate(op,payload)
+        if args.dry_run:
+            print(json.dumps({'dry_run':True,'op':op,'args':payload,'advertising_settings_changed':False},ensure_ascii=False,indent=2));return
+        run_id=args.run_id or time.strftime('onboard-%Y%m%d-%H%M%S-')+uuid.uuid4().hex[:8]
+        receipt=run(client,[{'op':op,'args':payload}],run_id)
+        print(json.dumps({'status':receipt['status'],'jobs':[j.get('id') for j in receipt['jobs']],
+            'receipt_file':str((STATE/'operations'/run_id/'receipt.json').resolve())},ensure_ascii=False,indent=2));return
     if args.command == 'resume':
         if not re.fullmatch('[A-Za-z0-9_-]{8,64}', args.saved_run_id): raise ValueError('Invalid saved run-id.')
         receipt = json.loads((STATE / 'operations' / args.saved_run_id / 'receipt.json').read_text())

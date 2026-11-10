@@ -672,3 +672,156 @@ class CreationCliRegressionTests(unittest.TestCase):
             path=Path(folder)/'payload.json';path.write_text(json.dumps(new_group()))
             argv=['tencent_ads.py','--account','123','--dry-run','new-smart','--mode','IAA','--args-file',str(path)]
             with patch('sys.argv',argv),patch.object(client,'Gateway'),self.assertRaises(ValueError):client.main()
+
+
+class SharedOperatorTests(unittest.TestCase):
+    def setUp(self):
+        import tencent_onboarding
+        self.onboarding=tencent_onboarding
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.root=Path(self.tmp.name)
+        cfg=dict(config(),write_enabled=False,operators={'team-main':{'user_token':'shared-fake-secret','user_token_expires_at':int(time.time())+3600}})
+        cfg['accounts']['456']={'mini_game_ids':[GAME]}
+        self.folder=runtime.directory(self.root,profile_id='test-team')
+        runtime.save(self.folder/'config.json',cfg);runtime.save(self.folder/'tokens.json',{'access_token':'app-token'})
+        self.cfg=runtime.load_config(self.root,profile_id='test-team')
+        self.checked=[];self.fail_id=None;self.calls=[]
+        test=self
+        class Api:
+            def organization_authentication(self,operator_id,ids):
+                test.checked.append((operator_id,ids))
+                return {'code':0,'data':{'list':[{'account_id':i,'authentication_status':'AUTHENTICATION_STATUS_UNAUTHENTICATED' if i==test.fail_id else 'AUTHENTICATION_STATUS_AUTHENTICATED'} for i in ids]}}
+            def __call__(self,endpoint,params,**kwargs):
+                test.calls.append((endpoint,params))
+                if endpoint=='advertiser/get' and params.get('pagination_mode')!='PAGINATION_MODE_NORMAL':
+                    return {'code':132100}
+                i=params.get('account_id',789)
+                data=[{'account_id':i,'system_status':'CUSTOMER_STATUS_NORMAL','mdm_id':88}]
+                if endpoint=='conversions/get':data=[{'conversion_id':7,'marketing_carrier_id':GAME,'access_status':'ACCESS_STATUS_COMPLETED'}]
+                return {'code':0,'data':{'list':data,'page_info':{'total_page':1}}}
+        self.api=Api()
+
+    def execute(self,op,args):
+        return management.execute(op,dict(args,profile_id='test-team'),root=self.root,api=self.api)
+
+    def test_operator_binding_is_batch_atomic_and_independent_of_ad_write_switch(self):
+        original=(self.folder/'config.json').read_bytes();self.fail_id=456
+        with self.assertRaises(runtime.Rejected):self.execute('tencent_bind_operator',{'operator_id':'team-main','account_ids':[123,456]})
+        self.assertEqual(original,(self.folder/'config.json').read_bytes())
+        self.fail_id=None
+        result=self.execute('tencent_bind_operator',{'operator_id':'team-main','account_ids':[123,456]})
+        cfg=runtime.load_config(self.root,profile_id='test-team')
+        self.assertTrue(result['data']['verified']);self.assertFalse(cfg['write_enabled'])
+        self.assertEqual(runtime.operator_credential(cfg,456)['user_token'],'shared-fake-secret')
+        self.assertNotIn('user_token',cfg['accounts']['456'])
+        status=management.execute('tencent_status',{'profile_id':'test-team'},root=self.root)
+        self.assertTrue(status['operator_credentials']['456']['valid'])
+        self.assertNotIn('shared-fake-secret',json.dumps(status))
+        self.assertEqual(status['live_account_verification'],'not_checked_by_status')
+
+    def test_registration_checks_games_and_keeps_tokens_and_no_partial_scope(self):
+        old=(self.folder/'config.json').read_bytes();tokens=(self.folder/'tokens.json').read_bytes()
+        entries=[{'account_id':789,'mini_game_ids':[GAME]},{'account_id':790,'mini_game_ids':['wx0000000000000002']}]
+        with self.assertRaises(runtime.Rejected):self.execute('tencent_register_accounts',{'accounts':entries})
+        self.assertEqual(old,(self.folder/'config.json').read_bytes())
+        result=self.execute('tencent_register_accounts',{'accounts':entries[:1],'operator_id':'team-main'})
+        self.assertTrue(result['data']['verified']);self.assertEqual(tokens,(self.folder/'tokens.json').read_bytes())
+        cfg=runtime.load_config(self.root,profile_id='test-team')
+        self.assertEqual(cfg['accounts']['789'],{'mini_game_ids':[GAME],'operator_id':'team-main'})
+        self.assertFalse(cfg['write_enabled']);self.assertTrue(all(e.endswith('/get') for e,_ in self.calls))
+
+    def test_discovery_does_not_register_and_unregistered_binding_rejected(self):
+        before=(self.folder/'config.json').read_bytes()
+        self.assertEqual(len(self.execute('tencent_discover_accounts',{'account_ids':[789,790]})['data']['accounts']),2)
+        self.assertEqual(before,(self.folder/'config.json').read_bytes())
+        self.execute('tencent_discover_accounts',{})
+        self.assertEqual(self.calls[-1][0],'organization_account_relation/get')
+        self.assertEqual(self.calls[-1][1]['pagination_mode'],'PAGINATION_MODE_NORMAL')
+        with self.assertRaises(runtime.Rejected):self.execute('tencent_bind_operator',{'operator_id':'team-main','account_ids':[789]})
+
+    def test_operator_callback_saves_once_without_account_selection(self):
+        from urllib.parse import parse_qs
+        link=runtime.operator_authorize_url(self.root,self.cfg,'another-operator')
+        state=parse_qs(runtime.urlsplit(link['authorization_url']).query)['state'][0]
+        old=copy.deepcopy(self.cfg['accounts'])
+        v=runtime.user_callback(self.root,dict(state=state,user_status='2',user_token='another-fake-secret',expire_time=str(int(time.time())+3600)))
+        cfg=runtime.load_config(self.root,profile_id='test-team')
+        self.assertEqual(cfg['accounts'],old);self.assertEqual(v['operator_id'],'another-operator')
+        self.assertNotIn('account_id',v);self.assertFalse(cfg['write_enabled'])
+        self.assertEqual(cfg['operators']['another-operator']['user_token'],'another-fake-secret')
+        with self.assertRaises(runtime.Rejected):runtime.user_callback(self.root,dict(state=state,user_status='2',user_token='another-fake-secret',expire_time=str(int(time.time())+3600)))
+
+    def test_shared_post_checks_platform_org_permission_before_mutation(self):
+        cfg=copy.deepcopy(self.cfg);cfg['accounts']['456']['operator_id']='team-main'
+        api=runtime.API(self.root,cfg)
+        denied={'code':0,'data':{'list':[{'account_id':456,'authentication_status':'AUTHENTICATION_STATUS_UNAUTHENTICATED'}]}}
+        with patch.object(runtime,'access_token',return_value='app-token'),patch.object(runtime,'fetch_json',return_value=denied) as fetch:
+            with self.assertRaises(runtime.Rejected):api('adgroups/update',{'account_id':456,'adgroup_id':11},post=True)
+            self.assertEqual(fetch.call_count,1);self.assertEqual(fetch.call_args.args[0].method,'GET')
+        allowed={'code':0,'data':{'list':[{'account_id':456,'authentication_status':'AUTHENTICATION_STATUS_AUTHENTICATED'}]}}
+        with patch.object(runtime,'access_token',return_value='app-token'),patch.object(runtime,'fetch_json',side_effect=[allowed,{'code':0,'data':{}}]) as fetch:
+            api('adgroups/update',{'account_id':456,'adgroup_id':11},post=True)
+            self.assertEqual(fetch.call_count,2)
+            self.assertIn('user_token=shared-fake-secret',fetch.call_args.args[0].full_url)
+            self.assertNotIn(b'shared-fake-secret',fetch.call_args.args[0].data)
+        cfg['operators']['team-main']['user_token_expires_at']=1
+        with patch.object(runtime,'access_token',return_value='app-token'),patch.object(runtime,'fetch_json') as fetch:
+            with self.assertRaises(runtime.Rejected):api('adgroups/update',{'account_id':456,'adgroup_id':11},post=True)
+            fetch.assert_not_called()
+
+    def test_redaction_and_missing_operator_never_fall_back_to_other_account(self):
+        self.assertEqual(runtime.scrub({'message':'shared-fake-secret'},self.cfg),{'message':'[redacted]'})
+        cfg=copy.deepcopy(self.cfg);cfg['accounts']['456']['operator_id']='missing'
+        with self.assertRaises(runtime.Rejected):runtime.operator_credential(cfg,456)
+        self.assertEqual(runtime.operator_credential(self.cfg,456),self.cfg['accounts']['456'])
+
+    def test_migration_verifies_both_accounts_and_preserves_oauth_scope(self):
+        cfg=json.loads((self.folder/'config.json').read_text());cfg['accounts']['123'].update(user_token='legacy-secret',user_token_expires_at=int(time.time())+3600)
+        runtime.save(self.folder/'config.json',cfg);cfg=runtime.load_config(self.root,profile_id='test-team')
+        before=(self.folder/'config.json').read_bytes()
+        with patch.object(runtime,'API',return_value=self.api):
+            self.fail_id=456
+            with self.assertRaises(runtime.Rejected):self.onboarding.migrate_legacy_operator(self.root,cfg,123,'migrated-main',[123,456])
+            self.assertEqual(before,(self.folder/'config.json').read_bytes())
+            self.fail_id=None;self.onboarding.migrate_legacy_operator(self.root,cfg,123,'migrated-main',[123,456])
+        new=runtime.load_config(self.root,profile_id='test-team')
+        self.assertNotIn('user_token',new['accounts']['123'])
+        self.assertEqual(new['operators']['migrated-main']['user_token'],'legacy-secret')
+        self.assertEqual(set(cfg['accounts']),set(new['accounts']));self.assertFalse(new['write_enabled'])
+        self.assertEqual(runtime.operator_credential(new,456)['user_token'],'legacy-secret')
+
+    def test_registration_rejects_injected_credentials_and_duplicates(self):
+        for args in ({'accounts':[{'account_id':789,'mini_game_ids':[GAME],'user_token':'bad'}]},
+                     {'accounts':[{'account_id':789,'mini_game_ids':[GAME]}]*2},
+                     {'accounts':[{'account_id':True,'mini_game_ids':[GAME]}]}):
+            with self.assertRaises(ValueError):schema.validate('tencent_register_accounts',args)
+
+
+class OnboardingCliTests(unittest.TestCase):
+    def test_config_commands_have_no_account_flag_and_map_explicit_scope(self):
+        import io
+        from contextlib import redirect_stdout
+        with tempfile.TemporaryDirectory() as folder:
+            file=Path(folder)/'accounts.json';file.write_text(json.dumps([{'account_id':123,'mini_game_ids':[GAME]}]))
+            for tail,op in [(['register-accounts','--manifest',str(file),'--operator','team-main'],'tencent_register_accounts'),
+                            (['bind-operator','--operator','team-main','--ids','123','456'],'tencent_bind_operator'),
+                            (['operator-authorize','--operator','team-main'],'tencent_operator_authorize')]:
+                argv=['tencent_ads.py','--profile','test-team','--dry-run']+tail
+                with patch('sys.argv',argv),patch.object(client,'Gateway'),redirect_stdout(io.StringIO()) as output:
+                    client.main()
+                v=json.loads(output.getvalue());self.assertEqual(v['op'],op);self.assertNotIn('account_id',v['args'])
+                self.assertFalse(v['advertising_settings_changed'])
+
+    def test_new_registration_operations_need_local_operator_access(self):
+        with tempfile.TemporaryDirectory() as folder:
+            file=Path(folder)/'connection.json';client.save(file,{'base_url':'https://gateway.example.com','key':'a'*64,'access_mode':'read_only'})
+            gateway=client.Gateway(file)
+            with self.assertRaises(PermissionError):gateway.request('jobs',{'op':'tencent_bind_operator','args':{'operator_id':'team-main','account_ids':[123]}})
+
+    def test_run_accepts_verified_config_result_and_does_not_print_auth_link(self):
+        from unittest.mock import Mock
+        gateway=Mock();gateway.cfg={'base_url':'https://gateway.example.com'};gateway.request.return_value={'job_id':'test-job'}
+        step={'op':'tencent_bind_operator','args':{'profile_id':'test-team','operator_id':'team-main','account_ids':[123]}}
+        with tempfile.TemporaryDirectory() as folder,patch.object(client,'wait',return_value={'status':'done','result':{'code':0,'data':{'verified':True}}}):
+            receipt=client.run(gateway,[step],'test-config-001',state=Path(folder))
+            self.assertEqual(receipt['status'],'done')

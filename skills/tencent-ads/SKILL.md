@@ -21,6 +21,10 @@ description: 通过已授权的腾讯广告MKTAPI v3.0管理网关管理微信�
 
 创建接口报 11101 缺 `user_token` 时，走操作参考的「操作人认证与 user_token」；不要将其当成 OAuth 失败或组织角色不足。
 
+## 多账户与操作人
+
+按[批量接入](references/onboarding.md#批量接入与操作人复用)执行：`accounts`发现、`register-accounts`按明确游戏清单批量登记、`bind-operator`批量关联。user_token对应操作人，不要求每账户扫码。新操作人或过期才`operator-authorize`一次，回调自动保存；账户仍须OAuth可见、组织关系和游戏范围核验。每次共享凭据POST前实时核验组织关系，不能仅凭同主体复制令牌。旧凭据迁移由所有者在核验后处理，不能自动从别的账户挑一个。
+
 ## 已验收的创建入口
 
 微信小游戏「注册＋首日付费 ROAS」IAP暂停测试，可用 `scripts/prepare_iap_batch.py` 离线生成完整的单元＋创意清单；参数、适用范围及 dry-run 见接入与升级。默认手动版位排除视频号、18岁以上，不代表用户已同意这些投放设置。只有清单确认、账户资产核验和用户业务授权齐备才提交。
@@ -29,7 +33,7 @@ description: 通过已授权的腾讯广告MKTAPI v3.0管理网关管理微信�
 
 ## 小游戏智投
 
-`new-smart` 映射现有 `tencent_new_adgroup`，无单独smart op；不要猜操作名。`live_account_verification=pending` 是历史固定提示，不是写入门禁。智投使用独立的 `smart_delivery_platform` 与 `smart_delivery_scene_spec`；普通自动版位不等于智投。支持小游戏跑量平台的 IAA 首日/7日变现 ROI、IAP 首日/7日付费 ROI。先读[智投操作与边界](references/smart-delivery.md)，再生成清单；`inventory --delivery smart` 定位，`new-smart` 或批量清单暂停创建，`roi`/`bid` 保留原目标和转化资产。
+`new-smart` 映射现有 `tencent_new_adgroup`，无单独smart op；不要猜操作名。新版 `live_account_verification=not_checked_by_status` 说明status未做实时核验；旧pending也不是写入门禁。智投使用独立的 `smart_delivery_platform` 与 `smart_delivery_scene_spec`；普通自动版位不等于智投。支持小游戏跑量平台的 IAA 首日/7日变现 ROI、IAP 首日/7日付费 ROI。先读[智投操作与边界](references/smart-delivery.md)，再生成清单；`inventory --delivery smart` 定位，`new-smart` 或批量清单暂停创建，`roi`/`bid` 保留原目标和转化资产。
 
 当前已通过代码测试、平台真实结构只读核对；真实智投创建及调整尚待业务验收，不能沿用普通 IAP 广告的成功结论。混合变现、其他智投平台及30日目标未开放本入口。
 

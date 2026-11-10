@@ -93,15 +93,23 @@ def execute(op, args, *, root, api=None):
                 'oauth_token_remote_ip': runtime.token_remote_ip(cfg),
                 'oauth_token_host': runtime.token_host(cfg),
                 'management_enabled': bool(cfg.get('accounts')), 'managed_account_ids': sorted(cfg.get('accounts', {})),
-                'operator_credentials': {k: {'configured': bool(a.get('user_token')),
-                    'expires_at': a.get('user_token_expires_at'),
-                    'valid': bool(a.get('user_token')) and (a.get('user_token_expires_at') is None or a['user_token_expires_at'] > time.time())}
+                'operator_credentials': {k: {'configured': bool(runtime.operator_credential(cfg, k).get('user_token')),
+                    'expires_at': runtime.operator_credential(cfg, k).get('user_token_expires_at'),
+                    'valid': runtime.valid_operator(runtime.operator_credential(cfg, k)), 'operator_id': a.get('operator_id'),
+                    'source': 'operator' if a.get('operator_id') else 'legacy_account'}
                     for k, a in cfg.get('accounts', {}).items()},
-                'live_account_verification': 'pending', 'create_policy': 'paused_only', 'automatic_pause': False,
+                'write_enabled': cfg.get('write_enabled') is True,
+                'operator_scope_version': 1, 'registration_version': 1,
+                'operators': {k: {'configured': bool(v.get('user_token')), 'valid': runtime.valid_operator(v),
+                    'expires_at': v.get('user_token_expires_at')} for k,v in cfg.get('operators', {}).items()},
+                'live_account_verification': 'not_checked_by_status', 'create_policy': 'paused_only', 'automatic_pause': False,
                 'smart_delivery_platforms': [schema.SMART_PLATFORM], 'smart_delivery_support_version': 1}
-    cfg = runtime.load_config(root, require_accounts=op != 'tencent_authorize', profile_id=profile_id)
+    cfg = runtime.load_config(root, require_accounts=op not in ('tencent_authorize', 'tencent_discover_accounts', 'tencent_register_accounts', 'tencent_operator_authorize'), profile_id=profile_id)
     folder = runtime.directory(root, cfg)
     if op == 'tencent_authorize': return {'code': 0, 'data': {'authorization_url': runtime.authorize_url(root, cfg)}}
+    if op in schema.CONFIG_WRITES or op == 'tencent_discover_accounts':
+        import tencent_onboarding
+        return tencent_onboarding.execute(op,args,root=root,cfg=cfg,api=api or runtime.API(root,cfg))
     if op in WRITES and cfg.get('write_enabled') is not True: raise runtime.Rejected('Tencent advertising writes are disabled in the server profile; complete read-only account verification first.')
     account_id = args['account_id'];account = cfg['accounts'].get(str(account_id))
     if account is None: raise runtime.Rejected('Tencent account is outside the configured allowlist; Oceanengine account permissions do not apply.')

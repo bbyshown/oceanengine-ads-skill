@@ -85,7 +85,7 @@ python3 "$T/scripts/tencent_ads.py" --profile customer-b --account 123 \
 
 ## 批量接入与操作人复用
 
-需插件1.3.2和配套网关，status中operator_scope_version=1、registration_version=1。以下命令使用技能脚本绝对路径和显式第三方profile；示例ID均需替换。账户发现不授予管理权限，不因能发现几千个账户就全部放开。
+需插件1.3.3和配套网关，status中operator_scope_version=1、registration_version=1。以下命令使用技能脚本绝对路径和显式第三方profile；示例ID均需替换。账户发现不授予管理权限，不因能发现几千个账户就全部放开。
 
 1. `--profile team-profile accounts` 通过organization_account_relation/get的PAGINATION_MODE_CURSOR游标完整分页（普通页码方式不能翻过前1000条）只读发现当前BM组织OAuth可见客户（默认展示10条，完整数据存details_file；可用--limit调整）；可用 `accounts --ids 123 456` 精确批量核验（advertiser/get显式PAGINATION_MODE_NORMAL）。非BM身份可先按明确ID核验，不猜用BM/服务商根ID。输出企业、可用组织信息及是否已登记，不取联系人/证件信息。
 2. 准备明确账户/游戏清单，如下面JSON。先 `--profile team-profile --dry-run register-accounts --manifest accounts.json`，再以稳定run-id正式登记。本机须operator；无需打开广告write_enabled。服务器逐项实时核验账户可见且正常、同账户所选小游戏有已接入转化资产；全部通过才原子保存，任何一项失败不登记部分账户。新增游戏取并集，不移除原范围。此检查不代表选定目标、素材和回传已验收。
@@ -100,3 +100,5 @@ python3 "$T/scripts/tencent_ads.py" --profile customer-b --account 123 \
 ```
 
 登记与操作人绑定只改网关配置；不新建广告、不修改投放设置。自动跳过失败账户或放大游戏范围都不支持。提交结果不确定先按原run-id查回执，不换ID重复提交。网关侧安装必须包含新增tencent_onboarding.py；客户端更新不能代替服务端部署。
+
+尚未登记任何账户的新档案，也可先完成一次operator-authorize，再带--operator批量登记；认证不会自动增加账户或打开广告写入。

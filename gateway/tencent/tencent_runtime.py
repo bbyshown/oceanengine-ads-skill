@@ -431,7 +431,7 @@ def user_callback(root, query):
     if not isinstance(given, str) or not given.startswith('txu1_') or '.' not in given:
         raise Rejected('Invalid Tencent user callback state.')
     profile_id = profile_name(given[5:].split('.', 1)[0])
-    cfg = load_config(root, profile_id=profile_id)
+    cfg = load_config(root, require_accounts=False, profile_id=profile_id)
     with locked(root, cfg) as path:
         file = path / 'user-authorization.json'
         if not file.exists(): raise Rejected('No pending Tencent user authorization.')

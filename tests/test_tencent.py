@@ -855,3 +855,17 @@ class JobPollTransportTests(unittest.TestCase):
         api.request.side_effect=[TimeoutError()]*3
         with patch.object(client.time,'sleep'),self.assertRaisesRegex(RuntimeError,'original-job'):
             client.wait(api,'original-job')
+
+
+class EmptyProfileOperatorTests(unittest.TestCase):
+    def test_operator_can_authenticate_before_any_account_is_registered(self):
+        from urllib.parse import parse_qs
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);cfg=dict(config(),accounts={},write_enabled=False)
+            path=runtime.directory(root,profile_id='empty-team');runtime.save(path/'config.json',cfg);runtime.save(path/'tokens.json',{'access_token':'app-token'})
+            cfg=runtime.load_config(root,require_accounts=False,profile_id='empty-team')
+            link=runtime.operator_authorize_url(root,cfg,'team-main');state=parse_qs(runtime.urlsplit(link['authorization_url']).query)['state'][0]
+            result=runtime.user_callback(root,{'state':state,'user_status':'2','user_token':'new-operator-secret','expire_time':str(int(time.time())+3600)})
+            updated=runtime.load_config(root,require_accounts=False,profile_id='empty-team')
+            self.assertTrue(result['user_authorized']);self.assertEqual(updated['accounts'],{})
+            self.assertFalse(updated['write_enabled']);self.assertTrue(runtime.valid_operator(updated['operators']['team-main']))

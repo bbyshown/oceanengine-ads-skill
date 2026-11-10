@@ -115,3 +115,11 @@ OAuth Token 和操作人 `user_token` 是两种凭证。腾讯创建接口若返
 令牌只留在服务器 0600 config.json，原 OAuth 凭证、账户范围和 write_enabled 不变。签名 status 的 operator_credentials 仅显示配置/有效性及过期时间。重复/过期/错档案回调拒绝；令牌过期在写请求前停止。拿到令牌仍不等于广告创建成功，应回读库存，并依原拒绝回执处理纠正后的暂停批次。
 
 操作人回调兼容腾讯附加的 `wx_id` 字段，仅忽略，不写入档案或回显；不要因该字段拒绝有效的 user_status=2 回调。
+
+
+### 已验证的小游戏建投注意事项
+
+- `user_token` 与 access_token/timestamp/nonce 一样放在请求 URL 的查询参数，不能只放 JSON 请求体或 Header。账户中已存令牌却仍返回11101时，先核对传输位置，不要求用户重复实名。
+- 微信小游戏新客增长场景显式配置 `marketing_sub_goal=MARKETING_SUB_GOAL_MINI_GAME_NEW_CUSTOMER_GROWTH`；平台也可能要求 `targeting` 和 `bid_amount`。基础转化出价以分计，与深度 expected_roi 分别核对，不擅自覆盖用户 ROI。
+- 营销单元的空 end_date 可能回读为字符串 `0`；仅这两个无结束日期的表示可等价，其他日期与预算/状态仍严格核对。创建已返回 adgroup_id 后遇 mismatch，先核对该 ID，不能重建父单元。
+- `DYNAMIC_CREATIVE_TYPE_COMMON` 要求 creative_template_id；程序化组件使用 `DYNAMIC_CREATIVE_TYPE_PROGRAM`，仍须通过目标账户 `creative_template/get` 的 use_new_version=true 和实际营销四元组读取规格。品牌组件必填，常见要求512×512、≤400KB的真实品牌图。品牌跳转支持范围与广告主跳转不同，不把小游戏主跳转直接塞进品牌组件。没有合法品牌素材时保留暂停父单元，向用户取得正确图标/品牌资产后续建创意；不复用其他游戏标识。

@@ -434,10 +434,10 @@ class API:
         headers = {};body = None;data = dict(params)
         if post:
             account = self.cfg['accounts'][str(params['account_id'])]
-            if account.get('user_token') and upload is None:
+            if account.get('user_token'):
                 if account.get('user_token_expires_at') is not None and account['user_token_expires_at'] <= time.time():
                     raise Rejected('Tencent operator credential expired; request fresh operator verification.')
-                data['user_token'] = account['user_token']
+                common['user_token'] = account['user_token']
             if upload:
                 field, filename, raw = upload;boundary = uuid.uuid4().hex
                 parts = []

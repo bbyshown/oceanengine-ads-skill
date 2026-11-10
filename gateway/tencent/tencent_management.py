@@ -55,6 +55,13 @@ def subset(actual, expected):
     return actual == expected
 
 
+def verified_fields(actual, expected, *, creative=False):
+    # Tencent represents an unset marketing-unit end date as the string "0".
+    if not creative and expected.get('end_date') == '' and actual.get('end_date') == '0':
+        actual = dict(actual, end_date='')
+    return subset(actual, expected)
+
+
 def guard_jumps(value, game):
     if isinstance(value, dict):
         if 'page_type' in value and value['page_type'] != 'PAGE_TYPE_WECHAT_MINI_GAME': raise ValueError('Tencent creative destination must remain the registered WeChat mini-game.')
@@ -195,7 +202,7 @@ def execute(op, args, *, root, api=None):
         after = one(api, account_id, identifier, creative, deleted=deleting, extra_fields=set(wanted) - {'marketing_asset_outer_spec'})
         record['after'] = after
         expected = {'is_deleted': True} if deleting else {k: v for k, v in wanted.items() if k not in ('marketing_asset_outer_spec',)}
-        verified = subset(after, expected)
+        verified = verified_fields(after, expected, creative=creative)
         record['status'] = 'verified' if verified else 'mismatch';runtime.save(record_path, record)
         if not verified: raise Failure('mismatch', {'message': 'Tencent field readback mismatch.', 'change_id': change_id})
         return {'code': 0, 'data': {key: identifier, 'verified': True, 'after': after}, 'change_id': change_id}

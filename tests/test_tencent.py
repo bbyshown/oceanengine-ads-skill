@@ -511,3 +511,25 @@ class OperatorCredentialTests(unittest.TestCase):
         with patch.object(runtime,'access_token',return_value='app-token'),patch.object(runtime,'fetch_json') as fetch:
             with self.assertRaises(runtime.Rejected):runtime.API(self.root,cfg)('adgroups/add',{'account_id':123},post=True)
         fetch.assert_not_called()
+
+
+class OperatorTokenTransportTests(unittest.TestCase):
+    def test_operator_token_is_query_parameter_not_json_or_header(self):
+        from urllib.parse import parse_qs
+        cfg=dict(config(),accounts={'123':dict(config()['accounts']['123'],user_token='fake-user-token+=',user_token_expires_at=int(time.time())+3600)})
+        with patch.object(runtime,'access_token',return_value='fake-app-token'),patch.object(runtime,'fetch_json',return_value={'code':0}) as fetch:
+            runtime.API(Path('/unused'),cfg)('adgroups/add',{'account_id':123},post=True)
+        request=fetch.call_args.args[0]
+        query=parse_qs(runtime.urlsplit(request.full_url).query)
+        self.assertEqual(query['user_token'],['fake-user-token+='])
+        self.assertNotIn('user_token',json.loads(request.data))
+        self.assertNotIn('fake-user-token',str(request.headers))
+
+
+class ReadbackDateTests(unittest.TestCase):
+    def test_only_empty_group_end_date_matches_zero_representation(self):
+        self.assertTrue(management.verified_fields({'end_date':'0','daily_budget':30000},{'end_date':'','daily_budget':30000}))
+        self.assertFalse(management.verified_fields({'end_date':'0','daily_budget':40000},{'end_date':'','daily_budget':30000}))
+        self.assertFalse(management.verified_fields({'end_date':'2026-12-01'},{'end_date':''}))
+        self.assertFalse(management.verified_fields({'end_date':'0'},{'end_date':'2026-12-01'}))
+        self.assertFalse(management.verified_fields({'end_date':'0'},{'end_date':''},creative=True))

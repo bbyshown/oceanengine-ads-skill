@@ -85,9 +85,9 @@ python3 "$T/scripts/tencent_ads.py" --profile customer-b --account 123 \
 
 ## 批量接入与操作人复用
 
-需插件1.3.0和配套网关，status中operator_scope_version=1、registration_version=1。以下命令使用技能脚本绝对路径和显式第三方profile；示例ID均需替换。账户发现不授予管理权限，不因能发现几千个账户就全部放开。
+需插件1.3.1和配套网关，status中operator_scope_version=1、registration_version=1。以下命令使用技能脚本绝对路径和显式第三方profile；示例ID均需替换。账户发现不授予管理权限，不因能发现几千个账户就全部放开。
 
-1. `--profile team-profile accounts` 通过organization_account_relation/get完整分页只读发现当前BM组织OAuth可见客户（默认展示10条，完整数据存details_file；可用--limit调整）；可用 `accounts --ids 123 456` 精确批量核验（advertiser/get显式PAGINATION_MODE_NORMAL）。非BM身份可先按明确ID核验，不猜用BM/服务商根ID。输出企业、可用组织信息及是否已登记，不取联系人/证件信息。
+1. `--profile team-profile accounts` 通过organization_account_relation/get的PAGINATION_MODE_CURSOR游标完整分页（普通页码方式不能翻过前1000条）只读发现当前BM组织OAuth可见客户（默认展示10条，完整数据存details_file；可用--limit调整）；可用 `accounts --ids 123 456` 精确批量核验（advertiser/get显式PAGINATION_MODE_NORMAL）。非BM身份可先按明确ID核验，不猜用BM/服务商根ID。输出企业、可用组织信息及是否已登记，不取联系人/证件信息。
 2. 准备明确账户/游戏清单，如下面JSON。先 `--profile team-profile --dry-run register-accounts --manifest accounts.json`，再以稳定run-id正式登记。本机须operator；无需打开广告write_enabled。服务器逐项实时核验账户可见且正常、同账户所选小游戏有已接入转化资产；全部通过才原子保存，任何一项失败不登记部分账户。新增游戏取并集，不移除原范围。此检查不代表选定目标、素材和回传已验收。
 3. 若已有该操作人档案，直接追加 `--operator team-main`，同时批量核验组织认证并关联，无需重复扫码。已有账户用 `--profile team-profile --run-id bind-example-001 bind-operator --operator team-main --ids 123 456`。
 4. 只有新操作人或凭据失效时运行 `--profile team-profile --run-id operator-example-001 operator-authorize --operator team-main`。认证链接位于输出receipt_file内，不在聊天发Token；由本人确认，回调自动保存一次。再批量关联账户，无需人工逐账户存令牌。不要把使用者自己的操作归到另一个人的凭据；不同真实操作人分别建档。

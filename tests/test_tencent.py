@@ -693,6 +693,8 @@ class SharedOperatorTests(unittest.TestCase):
                 return {'code':0,'data':{'list':[{'account_id':i,'authentication_status':'AUTHENTICATION_STATUS_UNAUTHENTICATED' if i==test.fail_id else 'AUTHENTICATION_STATUS_AUTHENTICATED'} for i in ids]}}
             def __call__(self,endpoint,params,**kwargs):
                 test.calls.append((endpoint,params))
+                if endpoint=='organization_account_relation/get':
+                    return {'code':0,'data':{'list':[{'account_id':789,'corporation_name':'Test'}],'cursor_page_info':{'has_more':False}}}
                 if endpoint=='advertiser/get' and params.get('pagination_mode')!='PAGINATION_MODE_NORMAL':
                     return {'code':132100}
                 i=params.get('account_id',789)
@@ -736,7 +738,7 @@ class SharedOperatorTests(unittest.TestCase):
         self.assertEqual(before,(self.folder/'config.json').read_bytes())
         self.execute('tencent_discover_accounts',{})
         self.assertEqual(self.calls[-1][0],'organization_account_relation/get')
-        self.assertEqual(self.calls[-1][1]['pagination_mode'],'PAGINATION_MODE_NORMAL')
+        self.assertEqual(self.calls[-1][1]['pagination_mode'],'PAGINATION_MODE_CURSOR')
         with self.assertRaises(runtime.Rejected):self.execute('tencent_bind_operator',{'operator_id':'team-main','account_ids':[789]})
 
     def test_operator_callback_saves_once_without_account_selection(self):
@@ -825,3 +827,17 @@ class OnboardingCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder,patch.object(client,'wait',return_value={'status':'done','result':{'code':0,'data':{'verified':True}}}):
             receipt=client.run(gateway,[step],'test-config-001',state=Path(folder))
             self.assertEqual(receipt['status'],'done')
+
+
+class OrganizationCursorTests(unittest.TestCase):
+    def test_full_list_uses_advancing_cursor_and_refuses_partial_data(self):
+        import tencent_onboarding as onboarding
+        first={'code':0,'data':{'list':[{'account_id':123}],'cursor_page_info':{'has_more':True,'cursor':10}}}
+        last={'code':0,'data':{'list':[{'account_id':456}],'cursor_page_info':{'has_more':False}}}
+        from unittest.mock import Mock
+        api=Mock(side_effect=[first,last]);self.assertEqual(len(onboarding.organization_accounts(api)),2)
+        self.assertEqual(api.call_args_list[1].args[1]['cursor'],10)
+        for bad in ({'code':71002},first):
+            api=Mock(side_effect=[first,bad])
+            with self.assertRaises(runtime.Rejected):onboarding.organization_accounts(api)
+        self.assertFalse(api.call_args.kwargs.get('post',False))

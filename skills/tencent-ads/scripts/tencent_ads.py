@@ -66,8 +66,8 @@ class Gateway:
         with build_opener(NoRedirect()).open(req, timeout=45) as response: return json.load(response)
 
 
-def wait(client, job_id):
-    deadline = time.monotonic() + 35
+def wait(client, job_id, timeout=35):
+    deadline = time.monotonic() + timeout
     while True:
         row = client.request('job', {'job_id': job_id})
         if row['status'] not in ('queued', 'running') or time.monotonic() >= deadline: return row
@@ -77,7 +77,7 @@ def wait(client, job_id):
 def read(client, op, args):
     if op not in schema.READS: raise ValueError('Read entrypoint cannot submit a mutation.')
     job = client.request('jobs', {'op': op, 'args': args, 'idempotency_key': 'tencent-read-' + uuid.uuid4().hex})
-    row = wait(client, job['job_id']);result = row.get('result') or {}
+    row = (wait(client, job['job_id'], timeout=180) if op == 'tencent_discover_accounts' else wait(client, job['job_id']));result = row.get('result') or {}
     if row['status'] != 'done' or result.get('code') != 0: raise RuntimeError('Tencent read failed; inspect job ' + job['job_id'] + '. Missing data is not zero.')
     return result
 

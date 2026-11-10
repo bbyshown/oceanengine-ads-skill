@@ -15,12 +15,33 @@ def rows(api, endpoint, params):
         result = api(endpoint, dict(params, page=page, page_size=100))
         data = result.get('data') or {}
         if result.get('code') != 0 or not isinstance(data.get('list'), list) or not isinstance(data.get('page_info'), dict):
-            raise runtime.Rejected('Tencent account discovery failed; no partial registration.')
+            raise runtime.Rejected('Tencent discovery failed at ' + endpoint + ' page ' + str(page) + ', code ' + str(result.get('code')) + '; no partial registration.')
         output += data['list']
         pages=data['page_info'].get('total_page')
         if type(pages) is not int or pages < 0: raise runtime.Rejected('Tencent discovery page count missing; no partial registration.')
         if page >= pages: return output
     raise runtime.Rejected('Tencent discovery pagination incomplete; no partial registration.')
+
+
+def organization_accounts(api):
+    output = []; cursor = 0; seen = set()
+    for _ in range(100):
+        result = api('organization_account_relation/get', {'pagination_mode':'PAGINATION_MODE_CURSOR',
+            'cursor':cursor, 'page_size':100, 'fields':['account_id','corporation_name']})
+        data=result.get('data') or {}; info=data.get('cursor_page_info')
+        if (result.get('code') != 0 or not isinstance(data.get('list'),list) or not isinstance(info,dict)
+                or type(info.get('has_more')) is not bool):
+            raise runtime.Rejected('Tencent organization cursor discovery failed; no partial account list.')
+        output += data['list']
+        if not info['has_more']:
+            identifiers=[r.get('account_id') for r in output]
+            if len(set(identifiers)) != len(identifiers): raise runtime.Rejected('Duplicate organization account IDs; inspect discovery.')
+            return output
+        cursor=info.get('cursor')
+        if type(cursor) is not int or cursor <= 0 or cursor in seen or not data['list']:
+            raise runtime.Rejected('Tencent organization cursor did not advance; no partial account list.')
+        seen.add(cursor)
+    raise runtime.Rejected('Tencent organization discovery exceeds pagination limit; no partial account list.')
 
 
 def advertiser(api, account_id):
@@ -45,7 +66,7 @@ def execute(op, args, *, root, cfg, api):
         return {'code': 0, 'data': runtime.operator_authorize_url(root, cfg, args['operator_id'])}
     if op == 'tencent_discover_accounts':
         found = ([advertiser(api, account) for account in args['account_ids']] if args.get('account_ids')
-                 else rows(api, 'organization_account_relation/get', {'fields': ['account_id','corporation_name']}))
+                 else organization_accounts(api))
         return {'code': 0, 'data': {'accounts': [dict({k: r.get(k) for k in FIELDS},
             managed=str(r['account_id']) in cfg['accounts']) for r in found],
             'discovery_grants_management': False, 'discovery_source': 'explicit_account_verification' if args.get('account_ids') else 'organization_account_relation'}}

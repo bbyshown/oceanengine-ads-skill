@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 import re
 
 READS = {'tencent_status', 'tencent_inventory', 'tencent_funds', 'tencent_conversions',
-         'tencent_report', 'tencent_materials', 'tencent_history', 'tencent_discover_accounts'}
+         'tencent_report', 'tencent_materials', 'tencent_history', 'tencent_discover_accounts', 'tencent_preflight_smart'}
 WRITES = {'tencent_authorize', 'tencent_new_adgroup', 'tencent_new_creative', 'tencent_update_adgroup',
           'tencent_update_creative', 'tencent_delete_adgroup', 'tencent_delete_creative', 'tencent_upload'}
 CONFIG_WRITES = {'tencent_register_accounts', 'tencent_bind_operator', 'tencent_operator_authorize'}
@@ -34,11 +34,12 @@ ROI_GOALS = {'IAA': {'GOAL_1DAY_MONETIZATION_ROAS', 'GOAL_7DAY_MONETIZATION_ROAS
                      'GOAL_14DAY_LONGTERM_PURCHASE_ROAS', 'GOAL_30DAY_LONGTERM_PURCHASE_ROAS'}}
 
 
+SMART_SEVEN_DAY_MONETIZATION = 'SMART_DELIVERY_GOAL_SEVEN_DAY_MONETIZATION'
 SMART_PLATFORM = 'SMART_DELIVERY_PLATFORM_EDITION_MINI_GAME_PROMOTION'
 # (monetization, mini_game_promotion_spec field, corresponding conversion asset goal)
 SMART_GOALS = {
     'SMART_DELIVERY_GOAL_FIRST_DAY_MONETIZATION': ('IAA', 'first_day_monetization_roi', 'GOAL_1DAY_MONETIZATION_ROAS'),
-    'SMART_DELIVERY_GOAL_SEVEN_DAY_MONETIZATION': ('IAA', 'seven_day_monetization_roi', 'GOAL_7DAY_MONETIZATION_ROAS'),
+    SMART_SEVEN_DAY_MONETIZATION: ('IAA', 'seven_day_monetization_roi', 'GOAL_7DAY_MONETIZATION_ROAS'),
     'SMART_DELIVERY_GOAL_MINI_GAME_FIRST_DAY_PURCHASE_ROI': ('IAP', 'first_day_purchase_roi', 'GOAL_1DAY_PURCHASE_ROAS'),
     'SMART_DELIVERY_GOAL_SEVEN_DAY_PURCHASE': ('IAP', 'seven_day_purchase_roi', 'GOAL_7DAY_PURCHASE_ROAS'),
 }
@@ -144,6 +145,8 @@ def check_patch(patch, creative=False, create=False, monetization=None):
         if name in spec:
             worth = spec[name]
             if not isinstance(worth, dict) or set(worth) != {'goal', 'expected_roi'}: raise ValueError('ROI spec requires goal and expected_roi.')
+            if create and worth['goal'] == 'GOAL_7DAY_MONETIZATION_ROAS' and patch.get('smart_delivery_platform') != SMART_PLATFORM:
+                raise ValueError('Tencent seven-day monetization ROI requires smart delivery. Use new-smart or --smart-goal iaa-7d; ordinary bidding is not supported.')
             ratio(worth['expected_roi'])
             goals = ROI_GOALS.get(monetization, set().union(*ROI_GOALS.values()))
             if worth['goal'] not in goals: raise ValueError('ROI goal is incompatible with the selected IAA/IAP mode.')
@@ -187,7 +190,7 @@ def validate(op, args):
             raise ValueError('Use a valid local operator ID.')
         return
     required = {'account_id'};allowed = set(required)
-    if op in ('tencent_new_adgroup',): required |= {'payload', 'monetization'};allowed |= {'payload', 'monetization'}
+    if op in ('tencent_new_adgroup', 'tencent_preflight_smart'): required |= {'payload', 'monetization'};allowed |= {'payload', 'monetization'}
     if op in ('tencent_new_creative',): required |= {'adgroup_id', 'payload'};allowed |= {'adgroup_id', 'payload'}
     if op in ('tencent_update_adgroup', 'tencent_delete_adgroup'): required |= {'adgroup_id'};allowed |= {'adgroup_id'}
     if op in ('tencent_update_creative', 'tencent_delete_creative'): required |= {'dynamic_creative_id'};allowed |= {'dynamic_creative_id'}
@@ -205,7 +208,9 @@ def validate(op, args):
         if field in args: integer(args[field])
     if 'patch' in args: check_patch(args['patch'], creative='creative' in op)
     if 'payload' in args:
-        if op == 'tencent_new_adgroup' and args['monetization'] not in ROI_GOALS: raise ValueError('Choose IAA or IAP.')
+        if op in ('tencent_new_adgroup', 'tencent_preflight_smart') and args['monetization'] not in ROI_GOALS: raise ValueError('Choose IAA or IAP.')
+        if op == 'tencent_preflight_smart' and (not isinstance(args['payload'], dict) or args['payload'].get('smart_delivery_platform') != SMART_PLATFORM):
+            raise ValueError('Smart preflight requires explicit smart delivery parameters.')
         check_patch(args['payload'], creative='creative' in op, create=True, monetization=args.get('monetization'))
     if op in ('tencent_materials', 'tencent_upload') and args['kind'] not in ('image', 'video'): raise ValueError('Choose image or video.')
     if op == 'tencent_history' and (type(args.get('limit', 10)) is not int or not 1 <= args.get('limit', 10) <= 100): raise ValueError('History limit must be 1–100.')

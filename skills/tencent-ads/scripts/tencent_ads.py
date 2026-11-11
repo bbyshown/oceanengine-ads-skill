@@ -180,9 +180,9 @@ def main():
     origin.add_argument('--from-oceanengine-config', type=Path, help='Explicitly reuse the same team gateway connection; no account/OAuth scope is copied.')
     c.add_argument('--key-file', type=Path)
     c.add_argument('--access', choices=['read_only', 'operator'], default='read_only');c.add_argument('--overwrite', action='store_true')
-    for name in ('new-adgroup', 'new-smart', 'new-creative'):
+    for name in ('new-adgroup', 'new-smart', 'preflight-smart', 'new-creative'):
         p = sub.add_parser(name);p.add_argument('--args-file', type=Path, required=True)
-        if name in ('new-adgroup', 'new-smart'): p.add_argument('--mode', choices=['IAA', 'IAP'], required=True)
+        if name in ('new-adgroup', 'new-smart', 'preflight-smart'): p.add_argument('--mode', choices=['IAA', 'IAP'], required=True)
         else: p.add_argument('--adgroup-id', type=int, required=True)
     for name in ('update-adgroup', 'update-creative'):
         p = sub.add_parser(name);p.add_argument('id', type=int);p.add_argument('--patch-file', type=Path, required=True)
@@ -257,6 +257,9 @@ def main():
         if command == 'materials': payload['kind'] = args.kind
         result = read(client, 'tencent_' + command, payload)
         save(STATE / ('latest-' + command + '-' + (args.profile + '-' if args.profile else '') + str(args.account) + '.json'), result)
+        print(json.dumps(result, ensure_ascii=False, indent=2));return
+    if command == 'preflight-smart':
+        result = read(client, 'tencent_preflight_smart', dict(account, monetization=args.mode, payload=json.loads(args.args_file.read_text())))
         print(json.dumps(result, ensure_ascii=False, indent=2));return
     steps = []
     if command == 'authorize': op, payload = 'tencent_authorize', dict(selection)

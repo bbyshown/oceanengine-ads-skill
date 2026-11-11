@@ -1,6 +1,6 @@
 # 微信小游戏智投
 
-插件 1.2.0 和支持 `smart_delivery_support_version=1` 的网关配套使用。先 `status` 核对能力。这里的智投是小游戏跑量平台 `SMART_DELIVERY_PLATFORM_EDITION_MINI_GAME_PROMOTION`，不以自动版位判断，不将普通单元原地转换为智投。
+插件 1.3.4 和支持 `smart_delivery_support_version=2` 的网关配套使用。先 `status` 核对能力。这里的智投是小游戏跑量平台 `SMART_DELIVERY_PLATFORM_EDITION_MINI_GAME_PROMOTION`，不以自动版位判断，不将普通单元原地转换为智投。
 
 ## 目标与清单
 
@@ -16,6 +16,12 @@
 智投生成器目前采用自动版位，不接受 `--site`；自动版位可能要求视频号身份，不能套用普通单元排除视频号已验收的结论。用户需要手动版位时先核对平台智投资格和规格，不擅自开视频号或重建单元。
 
 生成的JSON可按接入文档 `--dry-run batch-create --manifest 清单` 检查，再以稳定run-id提交。原始单元JSON也可用 `--dry-run new-smart --mode IAA|IAP --args-file 文件`；必须显式包含平台和scene，不会回退普通投放。动态创意仍用 `adgroup_from` 引用已核验父单元。所有创建固定暂停，超时或核验不一致不重建。
+
+## IAA 七日变现智投
+
+用户要求七日变现 ROI 时，用 `prepare_iap_batch.py --smart-goal iaa-7d`（其余素材及预算参数照常），或用 `new-smart --mode IAA` 提交显式智投单元。清单必须包含 `SMART_DELIVERY_GOAL_SEVEN_DAY_MONETIZATION` 及 `seven_day_monetization_roi`。基础优化事件仍是注册，勿把 ROI 枚举放入 optimization_goal。普通竞价的七日变现目标会在发送平台请求前被拦截，也不得自动改成首日。
+
+`preflight-smart --mode IAA --args-file 单元payload.json` 只读核验智投参数和转化资产，文件应是清单首步的 args.payload。必须选同一账户下同游戏、已接入、注册＋七日变现的转化规则；能查到规则不代表可以跨游戏使用。预检成功仍需真实暂停创建与回读验收，不证明平台接受创建或素材版位兼容。
 
 ## 查询与调整
 

@@ -629,6 +629,27 @@ class SmartDeliveryTests(unittest.TestCase):
             management.execute('tencent_new_adgroup',{'account_id':123,'monetization':'IAA','payload':smart_group()},root=self.root,api=self.smart_api(wrong_game=True))
         self.assertFalse(any(post for _,_,post in self.api.calls))
 
+    def test_seven_day_standard_creation_stops_before_api(self):
+        payload=smart_group()
+        for key in ('smart_delivery_platform','smart_delivery_scene_spec'): payload.pop(key)
+        with self.assertRaisesRegex(ValueError,'requires smart delivery'):
+            self.execute('tencent_new_adgroup',{'account_id':123,'monetization':'IAA','payload':payload})
+        self.assertEqual(self.api.calls,[])
+
+    def test_smart_preflight_is_read_only_even_with_writes_disabled(self):
+        runtime.save(self.root/'private/tencent/config.json',dict(config(),write_enabled=False))
+        args={'account_id':123,'monetization':'IAA','payload':smart_group()}
+        calls=[]
+        def api(endpoint,params,post=False):
+            calls.append((endpoint,post))
+            return self.smart_api()(endpoint,params,post)
+        result=management.execute('tencent_preflight_smart',args,root=self.root,api=api)
+        self.assertTrue(result['data']['read_only'])
+        self.assertFalse(result['data']['creation_verified'])
+        self.assertEqual(calls,[('conversions/get',False)])
+        with self.assertRaisesRegex(ValueError,'does not match'):
+            management.execute('tencent_preflight_smart',args,root=self.root,api=self.smart_api(wrong_game=True))
+
     def test_smart_updates_preserve_goal_and_other_bid(self):
         g=smart_group();g['adgroup_id']=11;self.api.groups=[g]
         patch=schema.smart_scene_patch(g,roi_value='.6')

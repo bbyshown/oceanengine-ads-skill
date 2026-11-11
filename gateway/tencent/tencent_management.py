@@ -73,6 +73,20 @@ def guard_jumps(value, game):
         for child in value: guard_jumps(child, game)
 
 
+def verify_smart_conversion(api, account_id, wanted):
+    scene = wanted['smart_delivery_scene_spec']
+    rows = all_rows(api, 'conversions/get', {'account_id': account_id,
+        'fields': ['conversion_id', 'marketing_carrier_id', 'optimization_goal', 'deep_worth_optimization_goal', 'access_status'],
+        'filtering': [{'field': 'conversion_id', 'operator': 'EQUALS', 'values': [str(scene['conversion_id_list'][0])]}]})
+    if (len(rows) != 1 or rows[0].get('conversion_id') != scene['conversion_id_list'][0]
+            or rows[0].get('marketing_carrier_id') != wanted['marketing_carrier_detail']['marketing_carrier_id']
+            or rows[0].get('access_status') != 'ACCESS_STATUS_COMPLETED'
+            or rows[0].get('optimization_goal') != wanted['optimization_goal']
+            or rows[0].get('deep_worth_optimization_goal') != schema.SMART_GOALS[scene['smart_delivery_goal']][2]):
+        raise ValueError('Smart conversion asset does not match the selected account, game, mode and ROI goal.')
+    return rows[0]
+
+
 def execute(op, args, *, root, api=None):
     validate(op, args);root = Path(root)
     profile_id = args.get('profile_id')
@@ -103,7 +117,7 @@ def execute(op, args, *, root, api=None):
                 'operators': {k: {'configured': bool(v.get('user_token')), 'valid': runtime.valid_operator(v),
                     'expires_at': v.get('user_token_expires_at')} for k,v in cfg.get('operators', {}).items()},
                 'live_account_verification': 'not_checked_by_status', 'create_policy': 'paused_only', 'automatic_pause': False,
-                'smart_delivery_platforms': [schema.SMART_PLATFORM], 'smart_delivery_support_version': 1}
+                'smart_delivery_platforms': [schema.SMART_PLATFORM], 'smart_delivery_support_version': 2}
     cfg = runtime.load_config(root, require_accounts=op not in ('tencent_authorize', 'tencent_discover_accounts', 'tencent_register_accounts', 'tencent_operator_authorize'), profile_id=profile_id)
     folder = runtime.directory(root, cfg)
     if op == 'tencent_authorize': return {'code': 0, 'data': {'authorization_url': runtime.authorize_url(root, cfg)}}
@@ -114,6 +128,14 @@ def execute(op, args, *, root, api=None):
     account_id = args['account_id'];account = cfg['accounts'].get(str(account_id))
     if account is None: raise runtime.Rejected('Tencent account is outside the configured allowlist; Oceanengine account permissions do not apply.')
     api = api or runtime.API(root, cfg)
+    if op == 'tencent_preflight_smart':
+        wanted = args['payload']
+        if not allowed_game(wanted, account): raise ValueError('Smart preflight game is outside the configured scope.')
+        outer = wanted.get('marketing_asset_outer_spec') or {}
+        if outer.get('marketing_target_type') != 'MARKETING_TARGET_TYPE_WECHAT_MINI_GAME' or outer.get('marketing_asset_outer_id') != wanted['marketing_carrier_detail']['marketing_carrier_id']:
+            raise ValueError('Tencent carrier and promoted game must match.')
+        asset = verify_smart_conversion(api, account_id, wanted)
+        return {'code': 0, 'data': {'conversion': asset, 'smart_delivery_goal': wanted['smart_delivery_scene_spec']['smart_delivery_goal'], 'creation_verified': False, 'read_only': True}}
     if op == 'tencent_history':
         directory = folder / 'changes'
         records = [json.loads(p.read_text()) for p in directory.glob('*.json')] if directory.exists() else []
@@ -182,16 +204,7 @@ def execute(op, args, *, root, api=None):
                 raise ValueError('Tencent carrier and promoted game must match.')
         if not required <= set(wanted): raise ValueError('Missing required Tencent creation fields: ' + ','.join(sorted(required - set(wanted))))
         if not creative and schema.is_smart(wanted):
-            scene = wanted['smart_delivery_scene_spec']
-            rows = all_rows(api, 'conversions/get', {'account_id': account_id,
-                'fields': ['conversion_id', 'marketing_carrier_id', 'optimization_goal', 'deep_worth_optimization_goal', 'access_status'],
-                'filtering': [{'field': 'conversion_id', 'operator': 'EQUALS', 'values': [str(scene['conversion_id_list'][0])]}]})
-            if (len(rows) != 1 or rows[0].get('conversion_id') != scene['conversion_id_list'][0]
-                    or rows[0].get('marketing_carrier_id') != wanted['marketing_carrier_detail']['marketing_carrier_id']
-                    or rows[0].get('access_status') != 'ACCESS_STATUS_COMPLETED'
-                    or rows[0].get('optimization_goal') != wanted['optimization_goal']
-                    or rows[0].get('deep_worth_optimization_goal') != schema.SMART_GOALS[scene['smart_delivery_goal']][2]):
-                raise ValueError('Smart conversion asset does not match the selected account, game, mode and ROI goal.')
+            verify_smart_conversion(api, account_id, wanted)
         name_key = 'dynamic_creative_name' if creative else 'adgroup_name'
         existing = all_rows(api, endpoint + '/get', {'account_id': account_id, 'fields': [key, name_key], 'is_deleted': False,
             'filtering': [{'field': name_key, 'operator': 'EQUALS', 'values': [wanted[name_key]]}]})

@@ -33,6 +33,8 @@ description: 通过已授权的腾讯广告MKTAPI v3.0管理网关管理微信�
 
 ## 小游戏智投
 
+IAA 七日变现用 `--smart-goal iaa-7d` 生成清单，并先用 `preflight-smart` 验证同游戏的七日转化资产。禁止走普通竞价或降级为首日。
+
 `new-smart` 映射现有 `tencent_new_adgroup`，无单独smart op；不要猜操作名。新版 `live_account_verification=not_checked_by_status` 说明status未做实时核验；旧pending也不是写入门禁。智投使用独立的 `smart_delivery_platform` 与 `smart_delivery_scene_spec`；普通自动版位不等于智投。支持小游戏跑量平台的 IAA 首日/7日变现 ROI、IAP 首日/7日付费 ROI。先读[智投操作与边界](references/smart-delivery.md)，再生成清单；`inventory --delivery smart` 定位，`new-smart` 或批量清单暂停创建，`roi`/`bid` 保留原目标和转化资产。
 
 当前已通过代码测试、平台真实结构只读核对；真实智投创建及调整尚待业务验收，不能沿用普通 IAP 广告的成功结论。混合变现、其他智投平台及30日目标未开放本入口。

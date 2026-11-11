@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from tencent_ads import validate_steps
-from tencent_schema import money, ratio, SMART_GOALS, SMART_PLATFORM
+from tencent_schema import money, ratio, SMART_GOALS, SMART_PLATFORM, SMART_SEVEN_DAY_MONETIZATION
 
 # The manually selected placement set used by the verified no-Channels workflow.
 NO_CHANNELS_SITES = [
@@ -18,7 +18,7 @@ NO_CHANNELS_SITES = [
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--smart-goal', choices=sorted(SMART_GOALS), help='Generate a mini-game smart-delivery batch instead; determines IAA/IAP and ROI period. Automatic placements may require a Channels identity.')
+    parser.add_argument('--smart-goal', choices=[*sorted(SMART_GOALS), 'iaa-7d'], help='Generate a mini-game smart-delivery batch instead; determines IAA/IAP and ROI period. Automatic placements may require a Channels identity.')
     parser.add_argument('--account', type=int, required=True)
     parser.add_argument('--profile', required=True)
     parser.add_argument('--game', required=True, help='Verified WeChat mini-game wxAppID.')
@@ -63,9 +63,9 @@ def main():
     mode = 'IAP'
     if args.smart_goal:
         if args.site: parser.error('This smart generator currently uses automatic placements; do not assume no-Channels eligibility.')
-        mode, field, conversion_goal = SMART_GOALS[args.smart_goal]
+        mode, field, conversion_goal = SMART_GOALS[SMART_SEVEN_DAY_MONETIZATION if args.smart_goal == 'iaa-7d' else args.smart_goal]
         group.update(smart_delivery_platform=SMART_PLATFORM, automatic_site_enabled=True,
-                     smart_delivery_scene_spec={'smart_delivery_goal': args.smart_goal,
+                     smart_delivery_scene_spec={'smart_delivery_goal': SMART_SEVEN_DAY_MONETIZATION if args.smart_goal == 'iaa-7d' else args.smart_goal,
                          'smart_delivery_goal_spec': {'mini_game_promotion_spec': {
                              'register_cost': money(args.registration_bid), field: ratio(args.roi)}},
                          'conversion_id_list': [args.conversion]})

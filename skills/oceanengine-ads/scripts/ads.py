@@ -155,8 +155,18 @@ def make_plan(inventory, action, refs=None, value=None, options=None):
         if not set(targets) <= set(inventory['managed_project_ids']):raise ValueError('Cleanup includes unregistered projects; stop before changing anything.')
         steps = status_steps(inventory, targets, False)
         aids = [r['promotion_id'] for r in ads_for(inventory, targets)]
+        # Projects adopted from an existing account were never created by this tool.
+        # They are editable, but removing them is a separate decision: keep-only must
+        # not sweep them away merely because they became manageable.
+        adopted = sorted(inventory.get('adopted_project_ids', []))
+        if adopted and options.get('confirm_adopted') is not True:
+            raise ValueError('This action would delete ' + str(len(adopted)) + ' project(s) adopted from the existing account ('
+                             + ', '.join(str(i) for i in adopted)
+                             + '). Resend with --confirm-adopted if that is intended.')
         for op, field, ids in [('delete_ads', 'promotion_ids', aids), ('delete_projects', 'project_ids', targets)]:
-            for offset in range(0, len(ids), 20):steps.append({'op': op, 'args': {field: ids[offset:offset + 20]}})
+            for offset in range(0, len(ids), 20):
+                extra = {'confirm_adopted': True} if op == 'delete_projects' and adopted else {}
+                steps.append({'op': op, 'args': dict({field: ids[offset:offset + 20]}, **extra)})
         checks.update(deleted_project_ids=targets, deleted_promotion_ids=aids)
     else:raise ValueError('Unknown command: ' + action)
     if checks:steps.append({'op': 'inventory', 'args': {}, 'checks': checks})
@@ -265,10 +275,16 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     for cmd in ('status', 'list', 'capabilities','preflight','ensure-game-asset','ensure-game-events'):sub.add_parser(cmd)
     for cmd in ('start', 'pause', 'delete', 'keep-only'):
-        sub.add_parser(cmd).add_argument('projects', nargs='+')
+        s = sub.add_parser(cmd);s.add_argument('projects', nargs='+')
+        if cmd in ('delete', 'keep-only'):
+            s.add_argument('--confirm-adopted', action='store_true',
+                           help='Also delete projects adopted from the existing account.')
     s = sub.add_parser('switch');s.add_argument('source');s.add_argument('destination')
     for cmd in ('budget', 'roi'):
         s = sub.add_parser(cmd);s.add_argument('project');s.add_argument('value', type=float)
+    s=sub.add_parser('claim-projects',help="Adopt an account's existing projects for editing; deletion still needs confirmation.")
+    s.add_argument('project_ids',nargs='*',type=int)
+    s.add_argument('--all',action='store_true',dest='all_projects')
     sub.add_parser('account-profile')
     s = sub.add_parser('account-name');s.add_argument('--name');s.add_argument('--note')
     sub.add_parser('account-budget').add_argument('value', type=float)
@@ -309,6 +325,14 @@ def main():
     if args.command in ('status', 'list'):
         inv = read('inventory')['data'];save(ROOT / 'data/operations/latest-inventory.json', inv)
         show(summary(inv), ROOT / 'data/operations/latest-summary.json', args.full_output);return
+    if args.command == 'claim-projects':
+        if args.all_projects == bool(args.project_ids):
+            raise ValueError('Use either --all or explicit project IDs.')
+        request = {'all_projects': True} if args.all_projects else {'project_ids': args.project_ids}
+        plan={'action':'claim_projects','steps':[{'op':'claim_projects','args':request}]}
+        run_id=args.run_id or time.strftime('%Y%m%d-%H%M%S-')+uuid.uuid4().hex[:8]
+        if args.dry_run:print(json.dumps(plan,ensure_ascii=False,indent=2));return
+        print(json.dumps(execute_plan(plan,run_id),ensure_ascii=False,indent=2));return
     if args.command == 'account-profile':
         show(read('account_profile'), ROOT / 'data/operations/latest-account-profile.json', args.full_output);return
     if args.command == 'capabilities':show(read('status'), ROOT / 'data/operations/latest-capabilities.json', args.full_output);return
@@ -392,6 +416,7 @@ def main():
                 if args.end:options['end_time'] = args.end
             if args.command == 'edit-ad':options = {'patch': json.loads(args.patch_file.read_text()), 'promotion_id': args.promotion_id}
             if args.command == 'create-ad':options = json.loads(args.args_file.read_text())
+            if args.command in ('delete', 'keep-only'):options = {'confirm_adopted': getattr(args, 'confirm_adopted', False)}
             plan = make_plan(inv, args.command, refs, value, options)
         if not re.fullmatch('[A-Za-z0-9_-]{8,64}', run_id):raise ValueError('Invalid run ID.')
         save(RUNS / run_id / 'plan.json', plan)

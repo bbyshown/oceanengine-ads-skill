@@ -48,6 +48,22 @@ python3 "$SKILL_DIR/scripts/setup.py" add-account secondary=2222222222222222 \
 
 替换示例游戏ID为服务器已配置且目标账户真实可用的游戏。档案只在登记时明确选择；以后业务请求仍用账户别名，服务器按已验证的绑定选Token和游戏模板。静态既有账户及其他账户的绑定不会被覆盖，同一账户不能通过重复登记自动换游戏或授权档案。客户端不能提交任意模板文件、工作台ID或跳转地址。当前兼容实现仅允许安装方配置的EBP工作台和游戏模板，其他CUSTOMER工作台不能直接套用。
 
+### 存量项目纳管
+
+`add-account`只授予读权限。账户里**早就存在**的项目不会自动进入管理范围，所以直接对这些项目改预算/出价/启停会报“超出管理范围”。要让它们可改，显式纳管：
+
+```sh
+python3 "$SKILL_DIR/scripts/ads.py" --account secondary --run-id claim-secondary-001 claim-projects --all
+python3 "$SKILL_DIR/scripts/ads.py" --account secondary --run-id claim-secondary-002 claim-projects 123 456
+python3 "$SKILL_DIR/scripts/ads.py" --account secondary --run-id claim-secondary-003 claim-projects --dry-run --all
+```
+
+纳管前实时读取账户项目，并逐个核对游戏实例；**只要有一个项目属于别的游戏，整批都不纳管**，不做部分写入。纳管不创建、不开启、不改预算，也不改变已登记的账户/游戏范围。
+
+纳管后的项目可以改，但**默认不能删**。删除或`keep-only`命中纳管项目时会直接拒绝并列出ID；确认要删时同一请求额外加`--confirm-adopted`。这条确认是替代保护：此前“存量项目不在管理范围内”本身就挡住了批量清理，纳管后必须由人明确说删。
+
+`inventory`返回的`adopted_project_ids`即纳管来源的项目，可据此判断哪些是工具自己建的、哪些是接管来的。
+
 同一命令中断或任务仍在运行，重复使用原run-id查原job；明确拒绝/uncertain先检查回执，不能换新标识盲重试。客户端不会在未核验时把账户加入本地配置。安装级job仍要求HMAC签名，并使用已有审计与幂等机制。
 
 签名请求格式（不是匿名注册接口）：

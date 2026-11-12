@@ -135,3 +135,30 @@ class AdsTests(unittest.TestCase):
 
 
 if __name__ == '__main__':unittest.main()
+
+
+class AdoptedCleanupTests(unittest.TestCase):
+    """keep-only must not remove projects the tool never created."""
+
+    def inventory(self):
+        return {'projects': [{'project_id': 100, 'name': 'mine', 'opt_status': 'ENABLE'},
+                             {'project_id': 200, 'name': 'theirs', 'opt_status': 'DISABLE'}],
+                'ads': [{'promotion_id': 1, 'project_id': 100, 'opt_status': 'ENABLE'},
+                        {'promotion_id': 2, 'project_id': 200, 'opt_status': 'DISABLE'}],
+                'managed_project_ids': [100, 200], 'adopted_project_ids': [200]}
+
+    def test_keep_only_requires_confirmation_for_adopted_projects(self):
+        from ads import make_plan
+        with self.assertRaises(ValueError) as error:
+            make_plan(self.inventory(), 'keep-only', ['mine'])
+        self.assertIn('adopted', str(error.exception))
+
+    def test_confirmed_delete_marks_the_step_and_without_adopted_is_unchanged(self):
+        from ads import make_plan
+        plan = make_plan(self.inventory(), 'keep-only', ['mine'], options={'confirm_adopted': True})
+        deletes = [s for s in plan['steps'] if s['op'] == 'delete_projects']
+        self.assertTrue(deletes[0]['args']['confirm_adopted'])
+        self.assertEqual(deletes[0]['args']['project_ids'], [200])
+        inv = self.inventory(); inv['adopted_project_ids'] = []
+        plain = [s for s in make_plan(inv, 'keep-only', ['mine'])['steps'] if s['op'] == 'delete_projects']
+        self.assertNotIn('confirm_adopted', plain[0]['args'])

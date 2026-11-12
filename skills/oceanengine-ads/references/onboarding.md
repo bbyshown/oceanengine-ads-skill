@@ -55,14 +55,44 @@ python3 "$SKILL_DIR/scripts/setup.py" add-account secondary=2222222222222222 \
 ```sh
 python3 "$SKILL_DIR/scripts/ads.py" --account secondary --run-id claim-secondary-001 claim-projects --all
 python3 "$SKILL_DIR/scripts/ads.py" --account secondary --run-id claim-secondary-002 claim-projects 123 456
-python3 "$SKILL_DIR/scripts/ads.py" --account secondary --run-id claim-secondary-003 claim-projects --dry-run --all
+python3 "$SKILL_DIR/scripts/ads.py" --account secondary --dry-run --run-id claim-secondary-003 claim-projects --all
 ```
 
-纳管前实时读取账户项目，并逐个核对游戏实例；**只要有一个项目属于别的游戏，整批都不纳管**，不做部分写入。纳管不创建、不开启、不改预算，也不改变已登记的账户/游戏范围。
+纳管前实时读取账户项目并核对游戏实例：
+
+- `--all`只纳管**本游戏**的项目，账户里其他游戏的项目自动跳过，不影响纳管。
+- 点名`project_ids`时严格校验：**只要有一个属于别的游戏，整批都不纳管**，不做部分写入。
+- 本来就在管理范围内的项目（自己建的、或已在登记表里的）不会被重新纳管，重复执行幂等。
+
+纳管不创建、不开启、不改预算，也不改变已登记的账户/游戏范围。
 
 纳管后的项目可以改，但**默认不能删**。删除或`keep-only`命中纳管项目时会直接拒绝并列出ID；确认要删时同一请求额外加`--confirm-adopted`。这条确认是替代保护：此前“存量项目不在管理范围内”本身就挡住了批量清理，纳管后必须由人明确说删。
 
 `inventory`返回的`adopted_project_ids`即纳管来源的项目，可据此判断哪些是工具自己建的、哪些是接管来的。
+
+#### 同事完整操作顺序
+
+以把一个已授权账户`secondary`的存量项目接管过来为例：
+
+```sh
+# 1. 先确认账户账号和可见范围（只读）
+python3 "$SKILL_DIR/scripts/setup.py" accounts
+python3 "$SKILL_DIR/scripts/ads.py" --account secondary --dry-run --run-id claim-secondary-001 claim-projects --all
+
+# 2. 正式纳管（dry-run 通过后去掉 --dry-run，run-id 保持不变）
+python3 "$SKILL_DIR/scripts/ads.py" --account secondary --run-id claim-secondary-001 claim-projects --all
+
+# 3. 回读确认：看 managed_project_ids 和 adopted_project_ids
+python3 "$SKILL_DIR/scripts/ads.py" --account secondary --full-output status
+
+# 4. 之后改预算/出价/启停按账户别名正常操作
+python3 "$SKILL_DIR/scripts/ads.py" --account secondary --run-id budget-secondary-001 budget V02 500
+```
+
+`--dry-run`是全局参数，**必须写在子命令`claim-projects`之前**，写在后面会报`unrecognized arguments`。
+它只打印计划、不写任何东西，`scope_changed`为false。第2步中断或超时，**用同一个run-id重跑**，不要换新ID，客户端会先查原job。
+
+不需要纳管也不要紧：新项目直接在网关里建，自动进入管理范围，只有**接管历史项目**才需要这一步。
 
 同一命令中断或任务仍在运行，重复使用原run-id查原job；明确拒绝/uncertain先检查回执，不能换新标识盲重试。客户端不会在未核验时把账户加入本地配置。安装级job仍要求HMAC签名，并使用已有审计与幂等机制。
 

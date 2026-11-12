@@ -247,7 +247,12 @@ def execute_plan(plan, run_id, *, directory=RUNS, client=None):
 
 
 def summary(inv):
-    return {'account_budget': inv['account_budget'], 'projects': [
+    return {'account_budget': inv['account_budget'],
+            # Which projects can be edited, and which of those were adopted from the
+            # existing account (adopted ones additionally need --confirm-adopted to delete).
+            'managed_project_ids': inv.get('managed_project_ids', []),
+            'adopted_project_ids': inv.get('adopted_project_ids', []),
+            'projects': [
         {'id': p['project_id'], 'name': p['name'], 'switch': p['opt_status'], 'status': p.get('status'),
          'daily_budget': p.get('delivery_setting', {}).get('budget'), 'roi_goal': p.get('delivery_setting', {}).get('roi_goal'),
          'ads': [{'id': a['promotion_id'], 'switch': a['opt_status'], 'status': a.get('status'), 'reasons': a.get('status_second')}

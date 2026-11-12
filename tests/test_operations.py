@@ -162,3 +162,10 @@ class AdoptedCleanupTests(unittest.TestCase):
         inv = self.inventory(); inv['adopted_project_ids'] = []
         plain = [s for s in make_plan(inv, 'keep-only', ['mine'])['steps'] if s['op'] == 'delete_projects']
         self.assertNotIn('confirm_adopted', plain[0]['args'])
+
+    def test_status_summary_exposes_managed_and_adopted_projects(self):
+        import ads
+        inv = self.inventory(); inv['adopted_project_ids'] = [200]; inv['account_budget'] = {}
+        summary = ads.summary(inv)
+        self.assertEqual(summary['managed_project_ids'], [100, 200])
+        self.assertEqual(summary['adopted_project_ids'], [200])

@@ -1,5 +1,11 @@
 # 更新记录
 
+## 1.3.10
+
+- 新增 `rebind-account`：把已登记账户显式迁移到另一个已配置游戏。必须同时给出当前游戏（`--from-game-app-id`）和目标游戏，来源与实际绑定不符即拒绝；不会改动既有项目登记。
+- 修复账户绑定查询：此前只按目标游戏查登记表，账户绑在别的游戏时查不到，改绑守卫会拿默认值比对而放过过期请求。现按账户跨游戏查真实绑定。
+- `register_account` 遇到跨游戏登记不再只报错，会提示改用 `rebind-account`。
+
 ## 1.3.9
 
 - 新增巨量 30 日 IAA ROI：`--roi-mode 30d`（及清单 `"roi_mode":"30d"`），使用官方 `AD_CONVERT_TYPE_LTV_ROI_THIRTY` + `THIRTY_ROI_COEFFICIENT` 配对。

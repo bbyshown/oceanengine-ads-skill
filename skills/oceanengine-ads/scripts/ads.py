@@ -287,6 +287,11 @@ def main():
     s = sub.add_parser('switch');s.add_argument('source');s.add_argument('destination')
     for cmd in ('budget', 'roi'):
         s = sub.add_parser(cmd);s.add_argument('project');s.add_argument('value', type=float)
+    s=sub.add_parser('rebind-account',help='Move an already-registered account to another configured game; requires the current game.')
+    s.add_argument('target_account_id',type=int)
+    s.add_argument('--from-game-app-id',required=True,dest='from_game_app_id')
+    s.add_argument('--game-app-id',required=True)
+    s.add_argument('--profile')
     s=sub.add_parser('claim-projects',help="Adopt an account's existing projects for editing; deletion still needs confirmation.")
     s.add_argument('project_ids',nargs='*',type=int)
     s.add_argument('--all',action='store_true',dest='all_projects')
@@ -330,6 +335,14 @@ def main():
     if args.command in ('status', 'list'):
         inv = read('inventory')['data'];save(ROOT / 'data/operations/latest-inventory.json', inv)
         show(summary(inv), ROOT / 'data/operations/latest-summary.json', args.full_output);return
+    if args.command == 'rebind-account':
+        plan={'action':'rebind_account','steps':[{'op':'rebind_account','args':{
+            'target_account_id':args.target_account_id,'game_app_id':args.game_app_id,
+            'from_game_app_id':args.from_game_app_id,
+            **({'profile_id':args.profile} if args.profile else {})}}]}
+        run_id=args.run_id or time.strftime('%Y%m%d-%H%M%S-')+uuid.uuid4().hex[:8]
+        if args.dry_run:print(json.dumps(plan,ensure_ascii=False,indent=2));return
+        print(json.dumps(execute_plan(plan,run_id),ensure_ascii=False,indent=2));return
     if args.command == 'claim-projects':
         if args.all_projects == bool(args.project_ids):
             raise ValueError('Use either --all or explicit project IDs.')

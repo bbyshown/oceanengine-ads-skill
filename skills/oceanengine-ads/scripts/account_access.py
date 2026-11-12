@@ -82,3 +82,37 @@ def authorize_profile(profile_id, run_id, *, dry_run=False):
     if data.get('profile_id')!=profile_id or data.get('storage')!='isolated_profile' or data.get('existing_credentials_replaced') is not False:
         raise ValueError('Gateway did not confirm isolated authorization; stop before opening the link.')
     return dict(data,status='awaiting_user_authorization',run_id=run_id)
+
+
+def rebind_account(entry, run_id, from_game, game, *, dry_run=False, profile_id=None):
+    """Move an already-registered account to another configured game.
+
+    The caller must name the game the account currently uses: the gateway refuses
+    the move otherwise, so a mis-targeted run cannot relocate a live account.
+    """
+    import ads
+    alias, sep, identifier = entry.partition('=')
+    if not sep or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', alias) or not identifier.isdigit():
+        raise ValueError('Use alias=account_id.')
+    cfg = settings.load()
+    if cfg['access_mode'] != 'operator':
+        raise PermissionError('Rebinding requires an authorized operator profile.')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{8,64}', run_id):
+        raise ValueError('Use a stable 8–64 character run-id.')
+    if not from_game or not game or from_game == game:
+        raise ValueError('Name the current game and a different target game.')
+    plan = {'action': 'rebind_account', 'steps': [{'op': 'rebind_account', 'args': {
+        'target_account_id': int(identifier), 'game_app_id': game, 'from_game_app_id': from_game,
+        **({'profile_id': profile_id} if profile_id else {})}}]}
+    if dry_run:
+        return {'status': 'preview', 'account_id': int(identifier), 'from': from_game,
+                'to': game, 'plan': plan, 'scope_changed': False}
+    client = ads.SelectedClient(settings.select_account(config=cfg))
+    receipt = ads.execute_plan(plan, run_id, client=client)
+    if receipt['status'] != 'done':
+        return {'status': receipt['status'], 'run_id': run_id,
+                'next_step': 'Repeat the same rebind command with the same run-id.'}
+    data = (receipt['steps'][0]['response']['result'].get('data') or {})
+    if data.get('rebound_from') != from_game or data.get('scope_changed') is not True:
+        raise ValueError('Gateway did not confirm the rebind; nothing local was changed.')
+    return dict(data, status='done', run_id=run_id, local_alias=alias)

@@ -107,7 +107,8 @@ class OperationWhitelistTests(unittest.TestCase):
         allowed = remote_client.READS | remote_client.WRITES
         cli_to_op = {
             'inventory': 'inventory', 'accounts': 'discover_accounts',
-            'add-account': 'register_account', 'claim-projects': 'claim_projects',
+            'add-account': 'register_account', 'rebind-account': 'rebind_account',
+            'claim-projects': 'claim_projects',
             'new-project': 'new_project', 'new-ad': 'new_ad', 'new-campaign': 'new_campaign',
             'batch-create': 'new_campaign', 'start': 'set_project_status',
             'pause': 'set_project_status', 'delete': 'delete_projects',
@@ -129,3 +130,43 @@ class OperationWhitelistTests(unittest.TestCase):
         """Adoption must run under operator access, matching register_account."""
         import remote_client
         self.assertNotIn('claim_projects', remote_client.READS)
+
+
+class RebindInterfaceTests(unittest.TestCase):
+    """Colleagues must be able to move an account themselves; verify the whole chain."""
+
+    def test_rebind_is_a_signed_write_and_installation_level(self):
+        import remote_client
+        self.assertIn('rebind_account', remote_client.WRITES)
+        self.assertNotIn('rebind_account', remote_client.READS)
+
+    def test_both_client_entries_expose_rebind(self):
+        import subprocess, sys
+        from pathlib import Path
+        base = Path(__file__).resolve().parent.parent / 'skills/oceanengine-ads/scripts'
+        for script, needle in (('ads.py', 'rebind-account'), ('setup.py', 'rebind-account')):
+            out = subprocess.run([sys.executable, str(base / script), '--help'],
+                                 capture_output=True, text=True)
+            self.assertEqual(out.returncode, 0, out.stderr)
+            self.assertIn(needle, out.stdout, script)
+
+    def test_rebind_requires_both_games_and_rejects_equal_pair(self):
+        import account_access, os, tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as d:
+            cfg = Path(d) / 'c.json'
+            cfg.write_text('{"base_url":"https://gw.example.test","key":"%s","accounts":{"main":{"id":"1"}},"default_account":"main","access_mode":"operator"}' % ('a'*64))
+            cfg.chmod(0o600)
+            old = os.environ.get('OCEANENGINE_MANAGEMENT_CONFIG')
+            os.environ['OCEANENGINE_MANAGEMENT_CONFIG'] = str(cfg)
+            try:
+                for bad in (('', 'x'), ('ttA', ''), ('ttA', 'ttA')):
+                    with self.assertRaises(ValueError):
+                        account_access.rebind_account('main=1', 'rebind-test-0001', bad[0], bad[1], dry_run=True)
+                preview = account_access.rebind_account('main=1', 'rebind-test-0002', 'ttOld000001', 'ttNew000001', dry_run=True)
+                self.assertEqual(preview['status'], 'preview')
+                self.assertFalse(preview['scope_changed'])
+                self.assertEqual(preview['plan']['steps'][0]['args']['from_game_app_id'], 'ttOld000001')
+            finally:
+                if old is None: os.environ.pop('OCEANENGINE_MANAGEMENT_CONFIG', None)
+                else: os.environ['OCEANENGINE_MANAGEMENT_CONFIG'] = old

@@ -30,6 +30,11 @@ def main():
     a.add_argument('entry',help='alias=account_id');a.add_argument('--run-id',required=True)
     a.add_argument('--dry-run',action='store_true')
     a.add_argument('--profile');a.add_argument('--game-app-id')
+    a=s.add_parser('rebind-account',help='Move an already-registered account to another configured game.')
+    a.add_argument('entry',help='alias=account_id');a.add_argument('--run-id',required=True)
+    a.add_argument('--from-game-app-id',required=True,dest='from_game')
+    a.add_argument('--game-app-id',required=True,dest='game')
+    a.add_argument('--dry-run',action='store_true');a.add_argument('--profile')
     a=s.add_parser('authorize-profile',help='Create a separate OAuth authorization link, without replacing current credentials.')
     a.add_argument('profile_id');a.add_argument('--run-id',required=True);a.add_argument('--dry-run',action='store_true')
     s.add_parser('authorization-status').add_argument('profile_id')
@@ -52,6 +57,10 @@ def main():
     elif args.command=='add-account':
         import account_access
         print(json.dumps(account_access.add_account(args.entry,args.run_id,dry_run=args.dry_run,profile_id=args.profile,game_app_id=args.game_app_id),ensure_ascii=False,indent=2))
+    elif args.command=='rebind-account':
+        import account_access
+        print(json.dumps(account_access.rebind_account(args.entry,args.run_id,args.from_game,args.game,
+              dry_run=args.dry_run,profile_id=args.profile),ensure_ascii=False,indent=2))
     elif args.command=='authorize-profile':
         import account_access
         print(json.dumps(account_access.authorize_profile(args.profile_id,args.run_id,dry_run=args.dry_run),ensure_ascii=False,indent=2))

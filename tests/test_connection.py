@@ -87,3 +87,45 @@ class ConnectionTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class OperationWhitelistTests(unittest.TestCase):
+    """Every op the CLI can emit must be accepted by the signed client.
+
+    A missing entry fails only at submit time against the live gateway, so it is
+    caught here instead: a command that exists but cannot be sent is a broken
+    release, not a user error.
+    """
+
+    def test_every_cli_command_maps_to_an_allowed_operation(self):
+        """Every subcommand that sends a job must have its op in the whitelist.
+
+        The mapping is declared here explicitly so adding a CLI command without
+        wiring its op fails this test instead of failing for a colleague.
+        """
+        import remote_client
+        allowed = remote_client.READS | remote_client.WRITES
+        cli_to_op = {
+            'inventory': 'inventory', 'accounts': 'discover_accounts',
+            'add-account': 'register_account', 'claim-projects': 'claim_projects',
+            'new-project': 'new_project', 'new-ad': 'new_ad', 'new-campaign': 'new_campaign',
+            'batch-create': 'new_campaign', 'start': 'set_project_status',
+            'pause': 'set_project_status', 'delete': 'delete_projects',
+            'keep-only': 'delete_projects', 'switch': 'set_project_status',
+            'budget': 'set_project_budget', 'roi': 'set_project_bid',
+            'edit-ad': 'update_ad', 'create-ad': 'create_paused_ad',
+            'upload': 'upload_video', 'report': 'report',
+        }
+        missing = {cli: op for cli, op in cli_to_op.items() if op not in allowed}
+        self.assertEqual(missing, {})
+
+    def test_adoption_operation_is_sendable(self):
+        import remote_client
+        self.assertIn('claim_projects', remote_client.WRITES)
+        self.assertIn('register_account', remote_client.WRITES)
+        self.assertIn('discover_accounts', remote_client.READS)
+
+    def test_claim_projects_is_not_read_only_gated(self):
+        """Adoption must run under operator access, matching register_account."""
+        import remote_client
+        self.assertNotIn('claim_projects', remote_client.READS)

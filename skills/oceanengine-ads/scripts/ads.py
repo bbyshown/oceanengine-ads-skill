@@ -299,7 +299,7 @@ def main():
     s = sub.add_parser('create-ad');s.add_argument('project');s.add_argument('--args-file', type=Path, required=True)
     s = sub.add_parser('new-project');s.add_argument('name');s.add_argument('--budget', type=float, required=True);s.add_argument('--roi', type=float, required=True)
     s.add_argument('--gender',choices=['male','female','all'],default='all')
-    s.add_argument('--roi-mode', choices=['7d'], help='Use 7-day IAA ROI for the new project.')
+    s.add_argument('--roi-mode', choices=['7d','30d'], help='IAA ROI window: 7-day or 30-day retrieval.')
     for cmd in ('new-ad', 'new-campaign'):
         s = sub.add_parser(cmd)
         s.add_argument('project' if cmd == 'new-ad' else 'name')
@@ -307,7 +307,7 @@ def main():
         else:
             s.add_argument('--budget', type=float, required=True);s.add_argument('--roi', type=float, required=True)
             s.add_argument('--gender',choices=['male','female','all'],default='all')
-            s.add_argument('--roi-mode', choices=['7d'], help='Use 7-day IAA ROI for the new project.')
+            s.add_argument('--roi-mode', choices=['7d','30d'], help='IAA ROI window: 7-day or 30-day retrieval.')
         s.add_argument('--video-id');s.add_argument('--cover-id')
         s.add_argument('--videos-file', type=Path, help='JSON array of video_id, cover_id and optional orientation.')
         s.add_argument('--images-file', type=Path)

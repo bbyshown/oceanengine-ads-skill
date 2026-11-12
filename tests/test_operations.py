@@ -169,3 +169,39 @@ class AdoptedCleanupTests(unittest.TestCase):
         summary = ads.summary(inv)
         self.assertEqual(summary['managed_project_ids'], [100, 200])
         self.assertEqual(summary['adopted_project_ids'], [200])
+
+
+class RoiWindowTests(unittest.TestCase):
+    """Both IAA retrieval windows must pass the client schema and survive batching."""
+
+    def project_args(self, mode):
+        return {'creation_id': 'roi-window-test-01',
+                'project': {'name': 'AI_win', 'budget': 300, 'roi_goal': .55, 'roi_mode': mode}}
+
+    def test_both_windows_are_accepted_and_others_rejected(self):
+        import creation_schema
+        for mode in ('7d', '30d'):
+            creation_schema.validate('new_project', self.project_args(mode))
+        for mode in ('14d', '30', 'thirty', '', None, True):
+            with self.assertRaises(ValueError):
+                creation_schema.validate('new_project', self.project_args(mode))
+
+    def test_batch_manifest_carries_each_rows_window(self):
+        import ads
+        rows = [{'name': 'r7', 'video_id': 'v7', 'cover_id': 'c7', 'roi_mode': '7d'},
+                {'name': 'r30', 'video_id': 'v30', 'cover_id': 'c30', 'roi_mode': '30d'}]
+        items = ads.batch_items(rows, 300, roi_start=.5, roi_end=.6)
+        plan = ads.creation_plan(items, 'roi-window-batch-01')
+        modes = [step['args']['project']['roi_mode'] for step in plan['steps']]
+        self.assertEqual(modes, ['7d', '30d'])
+
+    def test_cli_exposes_both_window_choices(self):
+        """Assert against the parsed CLI, not its source text."""
+        import subprocess, sys
+        from pathlib import Path
+        ads_py = Path(__file__).resolve().parent.parent / 'skills/oceanengine-ads/scripts/ads.py'
+        out = subprocess.run([sys.executable, str(ads_py), 'new-project', '--help'],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn('7d', out.stdout)
+        self.assertIn('30d', out.stdout)

@@ -1,5 +1,11 @@
 # 更新记录
 
+## 1.3.9
+
+- 新增巨量 30 日 IAA ROI：`--roi-mode 30d`（及清单 `"roi_mode":"30d"`），使用官方 `AD_CONVERT_TYPE_LTV_ROI_THIRTY` + `THIRTY_ROI_COEFFICIENT` 配对。
+- 能力探测按请求窗口查询，7d/30d 各自校验账户资产是否支持；不支持时在写入前拒绝，不会盲发被平台打回。
+- `capabilities` 的 `project_roi_modes` 现由服务端模式表生成，返回 `["30d","7d"]`。
+
 ## 1.3.8
 
 - 修复 `claim-projects` 客户端白名单漏配：命令已存在但签名客户端拒绝发送（`Unsupported management operation`），同事根本无法纳管。已加入 `WRITES`。

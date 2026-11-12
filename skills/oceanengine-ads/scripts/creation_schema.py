@@ -94,6 +94,9 @@ def ad_materials(ad):
     return materials
 
 
+# IAA retrieval windows accepted by the gateway; keep in step with the server.
+ROI_MODES = ('7d', '30d')
+
 def validate(op, args):
     if op not in OPS or not isinstance(args, dict):raise ValueError('Unknown creation operation.')
     if not re.fullmatch('[A-Za-z0-9_-]{8,80}', str(args.get('creation_id', ''))):raise ValueError('Stable creation_id required.')
@@ -106,7 +109,7 @@ def validate(op, args):
         p = args['project']
         if not isinstance(p, dict) or set(p) - {'name', 'budget', 'roi_goal', 'gender', 'roi_mode'} or not {'name','budget','roi_goal'} <= set(p):raise ValueError('Project takes name, budget, roi_goal and optional gender and roi_mode.')
         text(p['name']);number(p['budget'], 300, 999999.99, 2);number(p['roi_goal'], .01, 5, 4)
-        if 'roi_mode' in p and p['roi_mode'] != '7d':raise ValueError('Unsupported roi_mode. Use 7d for 7-day IAA ROI.')
+        if 'roi_mode' in p and p['roi_mode'] not in ROI_MODES:raise ValueError('Unsupported roi_mode. Use 7d or 30d for IAA ROI.')
         if p.get('gender', 'NONE') not in ('NONE','GENDER_MALE','GENDER_FEMALE'):raise ValueError('Unsupported gender targeting.')
     if op == 'new_ad':ids([args['project_id']])
     if 'ad' in args:

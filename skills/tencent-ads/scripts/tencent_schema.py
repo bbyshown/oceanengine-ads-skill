@@ -219,3 +219,4 @@ def validate(op, args):
         if not re.fullmatch(r'[A-Za-z0-9_.-]{1,128}', args['filename']): raise ValueError('Use a safe basename.')
         raw = base64.b64decode(args['base64'], validate=True)
         if not 0 < len(raw) <= (10 if args['kind'] == 'image' else 50) * 1024 * 1024: raise ValueError('Gateway upload limits: images10MiB, videos50MiB.')
+

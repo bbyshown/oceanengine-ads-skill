@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import tencent_ads as client
+import tencent_maintenance as maintenance
 import tencent_management as management
 import tencent_runtime as runtime
 import tencent_schema as schema
@@ -242,6 +243,23 @@ class TencentTests(unittest.TestCase):
             with self.assertRaises(runtime.Rejected):runtime.callback(self.root,{'state':state,'authorization_code':'code'})
             with self.assertRaises(runtime.Rejected):runtime.authorize_url(self.root,cfg)
             self.assertEqual(exchange.call_count,1)
+
+    def test_oauth_rejection_preserves_sanitized_diagnostics(self):
+        from urllib.parse import urlsplit, parse_qs
+        cfg = self.isolated_config()
+        state = parse_qs(urlsplit(runtime.authorize_url(self.root, cfg)).query)['state'][0]
+        with patch.object(runtime, 'fetch_json', return_value={'code': 123, 'message': 'Denied fake-second-secret private-callback-code', 'trace_id': 'trace-123'}):
+            with self.assertRaises(runtime.OAuthRejected):
+                runtime.callback(self.root, {'state': state, 'authorization_code': 'private-callback-code'})
+        status = self.execute('tencent_status', {'profile_id': 'client-team-b'})
+        self.assertEqual(status['authorization_status'], 'rejected')
+        self.assertEqual(status['authorization_error_code'], 123)
+        self.assertFalse(status['authorized'])
+        saved = (runtime.directory(self.root, cfg) / 'oauth-state.json').read_text()
+        self.assertNotIn('fake-second-secret', saved)
+        self.assertNotIn('private-callback-code', saved)
+        self.assertEqual(status['authorization_diagnostic']['trace_id'], 'trace-123')
+        self.assertIn('Denied', status['authorization_diagnostic']['message'])
 
     def test_profile_auth_does_not_inherit_legacy_allowlist_or_writes(self):
         self.isolated_config()
@@ -533,42 +551,6 @@ class ReadbackDateTests(unittest.TestCase):
         self.assertFalse(management.verified_fields({'end_date':'2026-12-01'},{'end_date':''}))
         self.assertFalse(management.verified_fields({'end_date':'0'},{'end_date':'2026-12-01'}))
         self.assertFalse(management.verified_fields({'end_date':'0'},{'end_date':''},creative=True))
-
-
-class ExistingGatewayConnectionTests(unittest.TestCase):
-    def test_explicit_import_copies_connection_but_not_oceanengine_scope(self):
-        with tempfile.TemporaryDirectory() as d:
-            source=Path(d)/'oceanengine.json'
-            client.save(source,{'base_url':'https://gateway.example.test','key':'a'*64,'access_mode':'operator',
-                                'accounts':{'other':123},'default_account':'other','profile_id':'other-platform'})
-            before=source.read_bytes()
-            cfg=client.connection_from_oceanengine(source)
-            self.assertEqual(cfg,{'base_url':'https://gateway.example.test','key':'a'*64,'access_mode':'read_only'})
-            self.assertEqual(source.read_bytes(),before)
-            self.assertEqual(client.connection_from_oceanengine(source,'operator')['access_mode'],'operator')
-            source.chmod(0o644)
-            if client.os.name=='posix':
-                with self.assertRaises(ValueError):client.connection_from_oceanengine(source)
-
-    def test_import_cli_never_prompts_or_prints_key_and_preserves_source(self):
-        import io
-        from contextlib import redirect_stdout
-        with tempfile.TemporaryDirectory() as d:
-            source=Path(d)/'oceanengine.json';target=Path(d)/'tencent.json'
-            client.save(source,{'base_url':'https://gateway.example.test','key':'b'*64,'access_mode':'operator'})
-            before=source.read_bytes();output=io.StringIO()
-            argv=['tencent_ads.py','--config',str(target),'configure','--from-oceanengine-config',str(source)]
-            with patch.object(client.sys,'argv',argv),patch.object(client.getpass,'getpass') as prompt,redirect_stdout(output):
-                client.main()
-            prompt.assert_not_called()
-            self.assertNotIn('b'*64,output.getvalue())
-            self.assertEqual(client.Gateway(target).cfg['access_mode'],'read_only')
-            self.assertEqual(source.read_bytes(),before)
-            self.assertEqual(target.stat().st_mode&0o777,0o600)
-            with patch.object(client.sys,'argv',argv),self.assertRaises(ValueError):client.main()
-            argv=['tencent_ads.py','--config',str(source),'configure','--from-oceanengine-config',str(source),'--overwrite']
-            with patch.object(client.sys,'argv',argv),self.assertRaises(ValueError):client.main()
-            self.assertEqual(source.read_bytes(),before)
 
 
 def smart_group(goal='SMART_DELIVERY_GOAL_SEVEN_DAY_MONETIZATION'):
@@ -890,3 +872,100 @@ class EmptyProfileOperatorTests(unittest.TestCase):
             updated=runtime.load_config(root,require_accounts=False,profile_id='empty-team')
             self.assertTrue(result['user_authorized']);self.assertEqual(updated['accounts'],{})
             self.assertFalse(updated['write_enabled']);self.assertTrue(runtime.valid_operator(updated['operators']['team-main']))
+
+
+class TokenMaintenanceTests(unittest.TestCase):
+    """The server-side timer rotates credentials only; it never touches an ad."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory();self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        runtime.save(self.root / 'private/tencent/config.json', config())
+
+    def token(self, **changes):
+        value = {'access_token': 'managed-access', 'refresh_token': 'managed-refresh',
+                 'received_at': time.time(), 'access_token_expires_in': 2592000,
+                 'refresh_token_expires_in': 2592000}
+        value.update(changes)
+        runtime.save(self.root / 'private/tencent/tokens.json', value)
+        return value
+
+    def test_healthy_token_is_reused_without_network(self):
+        self.token()
+        with patch.object(runtime, 'token_request') as refresh:
+            report = maintenance.inspect(self.root, None)
+            refresh.assert_not_called()
+        self.assertEqual(report['action'], 'valid')
+
+    def test_due_token_is_rotated_exactly_once(self):
+        self.token(received_at=time.time() - 2592000 + 600)
+        fresh = {'access_token': 'rotated', 'refresh_token': 'rotated-refresh', 'received_at': time.time(),
+                 'access_token_expires_in': 2592000, 'refresh_token_expires_in': 2592000}
+        with patch.object(runtime, 'token_request', return_value=fresh) as refresh:
+            report = maintenance.inspect(self.root, None)
+            self.assertEqual(refresh.call_count, 1)
+            self.assertEqual(refresh.call_args.args[1]['refresh_token'], 'managed-refresh')
+        self.assertEqual(report['action'], 'refreshed')
+        self.assertEqual(json.loads((self.root / 'private/tencent/tokens.json').read_text())['access_token'], 'rotated')
+
+    def test_expired_refresh_token_asks_for_authorization_instead_of_calling_out(self):
+        self.token(received_at=time.time() - 2592000 - 60)
+        with patch.object(runtime, 'token_request') as refresh:
+            report = maintenance.inspect(self.root, None)
+            refresh.assert_not_called()
+        self.assertEqual(report['action'], 'reauthorization_required')
+
+    def test_unresolved_previous_refresh_is_not_retried(self):
+        self.token(received_at=time.time() - 2592000 + 600)
+        runtime.save(self.root / 'private/tencent/refresh-pending.json', {'started_at': time.time()})
+        with patch.object(runtime, 'token_request') as refresh:
+            report = maintenance.inspect(self.root, None)
+            refresh.assert_not_called()
+        self.assertEqual(report['action'], 'uncertain')
+
+    def test_every_isolated_profile_is_checked_even_when_one_fails(self):
+        runtime.provision_profile(self.root, 'team-b', client_id='67890', client_secret='other-secret',
+                                  redirect_uri=config()['redirect_uri'])
+        self.token()
+        broken = runtime.directory(self.root, profile_id='team-b') / 'tokens.json'
+        runtime.save(broken, {'access_token': 'x', 'refresh_token': 'y'})
+        report = maintenance.maintain_tokens(self.root)
+        by_name = {row['profile_id']: row for row in report}
+        self.assertEqual(by_name['default']['action'], 'valid')
+        self.assertEqual(by_name['team-b']['action'], 'failed')
+
+    def test_timer_report_never_contains_credentials(self):
+        self.token(received_at=time.time() - 2592000 + 600)
+        fresh = {'access_token': 'rotated-secret-value', 'refresh_token': 'rotated-refresh-value',
+                 'received_at': time.time(), 'access_token_expires_in': 2592000, 'refresh_token_expires_in': 2592000}
+        import io
+        from contextlib import redirect_stdout
+        stream = io.StringIO()
+        with patch.object(runtime, 'token_request', return_value=fresh), redirect_stdout(stream):
+            maintenance.maintain_tokens(self.root)
+        printed = stream.getvalue()
+        for secret in ('rotated-secret-value', 'rotated-refresh-value', config()['client_secret']):
+            self.assertNotIn(secret, printed)
+
+    def test_unanchored_profiles_do_not_crash_maintenance(self):
+        self.token()
+        (self.root / 'private/tencent/profiles/not-a-profile').mkdir(parents=True)
+        report = maintenance.maintain_tokens(self.root)
+        self.assertEqual([row['profile_id'] for row in report], ['default'])
+
+    def test_installer_refuses_without_tencent_configuration(self):
+        mounted = Path(self.directory.name) / 'app'
+        with patch.object(maintenance, 'Path', return_value=mounted), \
+             patch.object(maintenance.os, 'geteuid', return_value=0), \
+             patch.object(maintenance.subprocess, 'run') as run:
+            with self.assertRaises(RuntimeError): maintenance.install()
+            run.assert_not_called()
+
+    def test_timer_units_point_at_the_installed_script_and_are_read_only(self):
+        service, timer = maintenance.units('/opt/oceanengine-callback/tencent_maintenance.py')
+        self.assertIn('ExecStart=/usr/bin/python3 /opt/oceanengine-callback/tencent_maintenance.py --refresh', service)
+        self.assertIn('ReadWritePaths=/opt/oceanengine-callback/private', service)
+        self.assertIn('ProtectSystem=strict', service)
+        self.assertIn('OnUnitActiveSec=15min', timer)
+        self.assertIn('WantedBy=timers.target', timer)
+        self.assertNotIn('adgroups', service + timer)

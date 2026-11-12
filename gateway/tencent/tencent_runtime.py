@@ -212,6 +212,11 @@ def locked(root, cfg=None):
         yield path
 
 
+# Refresh this long before the access token lapses. The same value drives on-demand
+# refreshes and the maintenance timer, so "is it due" has exactly one definition.
+ACCESS_REFRESH_LEAD_SECONDS = 3 * 3600
+
+
 def access_token(root, cfg):
     with locked(root, cfg) as path:
         file = path / 'tokens.json'
@@ -219,7 +224,7 @@ def access_token(root, cfg):
         token = json.loads(file.read_text())
         if token.get('client_id') is not None and str(token['client_id']) != str(cfg['client_id']):
             raise Rejected('Tencent token belongs to another application.')
-        if time.time() < token['received_at'] + token['access_token_expires_in'] - 600: return token['access_token']
+        if time.time() < token['received_at'] + token['access_token_expires_in'] - ACCESS_REFRESH_LEAD_SECONDS: return token['access_token']
         marker = path / 'refresh-pending.json'
         if marker.exists(): raise Rejected('Previous Tencent token refresh is uncertain; inspect it before reauthorization.')
         if time.time() >= token['received_at'] + token['refresh_token_expires_in']: raise Rejected('Tencent authorization expired; authorize again.')

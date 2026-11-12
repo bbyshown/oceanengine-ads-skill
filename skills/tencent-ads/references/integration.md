@@ -23,7 +23,7 @@
 
 第三方应用的每个客户身份使用独立profile。所有者通过`provision_profile`安全写入新应用配置，随后`--profile customer-b --run-id auth-example-001 authorize`生成链接。凭证保存到`private/tencent/profiles/<profile>/`，默认身份原文件不动；新身份初始accounts为空、写入关闭。回调state绑定档案和应用，跨档案、重复回调或不确定交换均拒绝再次交换。
 
-服务端Token使用提前刷新及独占锁，轮换结果不确定时停止再次刷新，保留排查标记。当前仅在API调用时按需刷新，不宣称已部署腾讯全天Token刷新守护；若连续闲置超过refresh_token有效期，需要重新授权。
+服务端Token使用提前刷新及独占锁，轮换结果不确定时停止再次刷新，保留排查标记。网关同时按需刷新和定时维护：所有者安装 `tencent_maintenance.py --install` 后，`tencent-token-refresh.timer` 每15分钟检查一次所有已配置档案，在access_token到期前3小时刷新一次。定时任务只处理凭证，不调用广告接口；遇到已存在的refresh-pending标记或refresh_token过期时只报告，不重试。若集群部署多套网关或未安装该任务，仍需以各自实际部署为准，不能只看客户端。
 
 私有Token导入辅助函数在附加网关模块中，不通过HTTP导入/导出凭证：所有者用`stage_private_tokens`暂存并设置生效检查时间，再用`finish_private_token_import`做一次刷新并按返回TTL安装。不得把未知旧Token的有效期从导入时重新算满30天。刷新超时或被拒绝后先检查原导入记录，不盲目重试或要求重置。
 

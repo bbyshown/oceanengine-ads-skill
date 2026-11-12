@@ -1,6 +1,6 @@
 # 腾讯v3.0网关附加模块
 
-这些通用模块用于已有签名任务网关v9：`tencent_runtime.py`负责腾讯HTTP/OAuth/Token，`tencent_management.py`负责白名单、回读和审计，`tencent_schema.py`负责参数校验，`tencent_onboarding.py`负责批量账户/游戏登记和操作人关联。
+这些通用模块用于已有签名任务网关v9：`tencent_runtime.py`负责腾讯HTTP/OAuth/Token，`tencent_management.py`负责白名单、回读和审计，`tencent_schema.py`负责参数校验，`tencent_onboarding.py`负责批量账户/游戏登记和操作人关联，`tencent_maintenance.py`负责多档案Token定时维护。
 
 当前仓库不含作者的完整生产网关安装、OAuth密钥或业务模板。不要把这些模块直接当成独立HTTP服务运行。现有网关集成需把Tencent操作在巨量账户路由前分流，保留原HMAC鉴权与持久化幂等job，单worker串行执行，并将Failure.state保留为uncertain/mismatch，不能覆盖为done。
 
@@ -23,6 +23,8 @@ Linux服务端配置文件为`<网关根目录>/private/tencent/config.json`，o
 ```
 
 操作人凭据保存于operators，账户通过operator_id关联；旧账户内user_token仅兼容读取，不应逐账户复制；不要把实际文件或Token提交Git。服务器按需刷新Token，未配置时Tencent状态返回configured=false，不读取或修改任何巨量凭证或广告。
+
+长时间闲置的档案仍需要定时维护，否则超过refresh_token有效期只能重新授权。所有者把 `tencent_maintenance.py` 装到网关目录后执行 `sudo python3 tencent_maintenance.py --install`，会启用15分钟一次的 `tencent-token-refresh.timer`；该任务只枚举 `private/tencent/` 及 `profiles/*/` 下已存在的档案，到期前刷新一次，遇已存在的refresh-pending标记、或refresh_token已过期时只报告 `uncertain`/`reauthorization_required`，不重试、不打印任何凭证，也不调用广告接口。同一刷新窗口由 `runtime.ACCESS_REFRESH_LEAD_SECONDS` 统一定义，定时任务与在线请求不会各判一套。输出为脱敏JSON（每个档案的action与剩余秒数），可直接接监控。
 
 第三方应用多客户授权：所有者在服务器本地调用`provision_profile(root, "customer-b", client_id=..., client_secret=..., redirect_uri=...)`，该函数不暴露HTTP。新配置、Token、独占锁和审计使用`private/tencent/profiles/customer-b/`，不覆盖默认私有应用。签名Tencent操作可带`profile_id`，CLI对应`--profile customer-b`；callback直接交给`runtime.callback`，它按state分流。每个新客户用独立档案，已有授权和不确定交换均禁止覆盖，账户名单须授权后另行核验配置。
 

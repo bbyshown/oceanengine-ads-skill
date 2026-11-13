@@ -205,3 +205,40 @@ class RoiWindowTests(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn('7d', out.stdout)
         self.assertIn('30d', out.stdout)
+
+
+class LandingPageTests(unittest.TestCase):
+    """A caller-selected landing page must reach the plan and stay on the page builder."""
+
+    def base(self, **ad):
+        payload = {'name': 'LP', 'video_id': 'v1', 'cover_id': 'c1'}
+        payload.update(ad)
+        return {'creation_id': 'landing-test-01',
+                'project': {'name': 'LP_proj', 'budget': 300, 'roi_goal': .55},
+                'ad': payload}
+
+    def test_landing_page_is_accepted_and_carried_into_the_plan(self):
+        import creation_schema
+        args = self.base(landing_page='https://www.chengzijianzhan.com/tetris/page/7642235445527609382')
+        creation_schema.validate('new_campaign', args)
+        self.assertEqual(args['ad']['landing_page'],
+                         'https://www.chengzijianzhan.com/tetris/page/7642235445527609382')
+
+    def test_offhost_or_malformed_pages_are_rejected_client_side(self):
+        import creation_schema
+        for bad in ('https://evil.example/tetris/page/7642235445527609382',
+                    'http://www.chengzijianzhan.com/tetris/page/7642235445527609382',
+                    'https://www.chengzijianzhan.com/tetris/page/12',
+                    'https://www.chengzijianzhan.com/other/7642235445527609382',
+                    ''):
+            with self.assertRaises(ValueError):
+                creation_schema.validate('new_campaign', self.base(landing_page=bad))
+
+    def test_cli_exposes_the_flag(self):
+        import subprocess, sys
+        from pathlib import Path
+        ads_py = Path(__file__).resolve().parent.parent / 'skills/oceanengine-ads/scripts/ads.py'
+        out = subprocess.run([sys.executable, str(ads_py), 'new-ad', '--help'],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn('--landing-page', out.stdout)

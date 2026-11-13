@@ -97,6 +97,24 @@ def ad_materials(ad):
 # IAA retrieval windows accepted by the gateway; keep in step with the server.
 ROI_MODES = ('7d', '30d')
 
+LANDING_HOST = 'www.chengzijianzhan.com'
+
+
+def landing_url(value):
+    """Mirror of the gateway rule so dry-run rejects what the server would reject."""
+    from urllib.parse import urlsplit
+    if not isinstance(value, str) or not 8 <= len(value) <= 2048:
+        raise ValueError('Landing page must be an https URL string.')
+    if any(ord(c) < 33 or ord(c) == 127 for c in value):
+        raise ValueError('Landing page must not contain whitespace or control characters.')
+    parts = urlsplit(value)
+    if parts.scheme != 'https' or parts.hostname != LANDING_HOST or parts.port or parts.username or parts.password:
+        raise ValueError('Landing page must be https://%s without credentials or a port.' % LANDING_HOST)
+    if not re.fullmatch(r'/tetris/page/[1-9][0-9]{5,24}/?', parts.path):
+        raise ValueError('Landing page must be a %s/tetris/page/<id> path.' % LANDING_HOST)
+    return value
+
+
 def validate(op, args):
     if op not in OPS or not isinstance(args, dict):raise ValueError('Unknown creation operation.')
     if not re.fullmatch('[A-Za-z0-9_-]{8,80}', str(args.get('creation_id', ''))):raise ValueError('Stable creation_id required.')
@@ -114,11 +132,12 @@ def validate(op, args):
     if op == 'new_ad':ids([args['project_id']])
     if 'ad' in args:
         a = args['ad']
-        if not isinstance(a, dict) or set(a) - {'name', 'video_id', 'cover_id', 'titles', 'orientation', 'product_image_id', 'videos', 'image_material_list', 'carousel_material_list'} or 'name' not in a:
+        if not isinstance(a, dict) or set(a) - {'name', 'video_id', 'cover_id', 'titles', 'orientation', 'product_image_id', 'videos', 'image_material_list', 'carousel_material_list', 'landing_page'} or 'name' not in a:
             raise ValueError('Ad requires a name and valid material fields.')
         text(a['name'])
         ad_materials(a)
         if 'product_image_id' in a:text(a['product_image_id'],256)
+        if 'landing_page' in a:landing_url(a['landing_page'])
         if 'titles' in a:
             if not isinstance(a['titles'], list) or not 1 <= len(a['titles']) <= 10:raise ValueError('Provide 1–10 titles.')
             for title in a['titles']:text(title, 55)

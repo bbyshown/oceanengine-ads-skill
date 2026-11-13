@@ -318,6 +318,7 @@ def main():
         s.add_argument('--images-file', type=Path)
         s.add_argument('--carousels-file', type=Path)
         s.add_argument('--product-image-id')
+        s.add_argument('--landing-page',help='Override the game landing page for this ad (https://www.chengzijianzhan.com/tetris/page/<id>).')
         s.add_argument('--title', action='append');s.add_argument('--orientation', choices=['VERTICAL','HORIZONTAL'])
     s = sub.add_parser('batch-create');s.add_argument('--manifest', type=Path, required=True);s.add_argument('--budget', type=float, required=True)
     s.add_argument('--product-image-id', help='Default product image for this account; each manifest row may override it.')
@@ -404,6 +405,7 @@ def main():
                     item['ad'] = ad
                     if args.title:item['ad']['titles'] = args.title
                     if args.product_image_id:item['ad']['product_image_id']=args.product_image_id
+                    if getattr(args,'landing_page',None):item['ad']['landing_page']=args.landing_page
                 if args.command == 'new-ad':item['project_id'] = resolve(read('inventory')['data'], args.project)['project_id']
                 plan = creation_plan([item], run_id, args.command.replace('-', '_'))
         elif args.command in ('upload', 'report', 'create-carousel'):

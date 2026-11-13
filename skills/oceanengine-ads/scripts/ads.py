@@ -201,10 +201,10 @@ def batch_items(rows, budget, roi=None, roi_start=None, roi_end=None, prefix='',
     if roi is None and roi_start is None and any('roi_goal' not in row for row in rows):raise ValueError('Every project requires an explicit ROI coefficient.')
     output = []
     for i, row in enumerate(rows):
-        if not isinstance(row, dict) or set(row) - {'name','video_id','cover_id','titles','orientation','budget','roi_goal','product_image_id','videos','roi_mode','image_material_list','carousel_material_list'}:raise ValueError('Unsupported manifest fields.')
+        if not isinstance(row, dict) or set(row) - {'name','video_id','cover_id','titles','orientation','budget','roi_goal','product_image_id','videos','roi_mode','image_material_list','carousel_material_list','landing_page'}:raise ValueError('Unsupported manifest fields.')
         goal = row.get('roi_goal', roi if roi_start is None else round(roi_start + (roi_end - roi_start) * i / max(len(rows) - 1, 1), 4))
         name = prefix + row['name']
-        ad = {k: row[k] for k in ('video_id','cover_id','titles','orientation','product_image_id','videos','image_material_list','carousel_material_list') if k in row};ad['name'] = name + '_广告'
+        ad = {k: row[k] for k in ('video_id','cover_id','titles','orientation','product_image_id','videos','image_material_list','carousel_material_list','landing_page') if k in row};ad['name'] = name + '_广告'
         if 'product_image_id' not in ad and product_image_id is not None:ad['product_image_id']=product_image_id
         project = {'name': name, 'budget': row.get('budget', budget), 'roi_goal': goal}
         if 'roi_mode' in row:project['roi_mode'] = row['roi_mode']

@@ -242,3 +242,13 @@ class LandingPageTests(unittest.TestCase):
                              capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn('--landing-page', out.stdout)
+
+    def test_batch_manifest_carries_per_row_landing_page(self):
+        import ads
+        rows = [{'name': 'a', 'video_id': 'v1', 'cover_id': 'c1', 'roi_goal': .5,
+                 'landing_page': 'https://www.chengzijianzhan.com/tetris/page/7642235445527609382'},
+                {'name': 'b', 'video_id': 'v2', 'cover_id': 'c2', 'roi_goal': .5}]
+        items = ads.batch_items(rows, 300)
+        self.assertEqual(items[0]['ad']['landing_page'],
+                         'https://www.chengzijianzhan.com/tetris/page/7642235445527609382')
+        self.assertNotIn('landing_page', items[1]['ad'])

@@ -1,0 +1,45 @@
+"""Portable UBMAX PRO creation input contract (not the upstream payload)."""
+
+EXAMPLE = {
+    'name': 'UBMAX PRO IAA test',
+    'budget': 300,
+    'roi': 0.8,
+    'roi_mode': '7d',
+    'videos': [{'video_id': 'REPLACE_VIDEO_ID', 'video_cover_id': 'REPLACE_COVER_ID'}],
+    'titles': ['Example shared title'],
+}
+FIELDS = frozenset(EXAMPLE)
+CONFIRM = 'accept_scheduled_then_pause'
+
+
+def validate_creation(args, *, submit=False):
+    if not isinstance(args, dict):
+        raise ValueError('UBMAX PRO requires a flat JSON object.')
+    expected = FIELDS | ({CONFIRM} if submit else set())
+    missing = sorted(FIELDS - args.keys())
+    unexpected = sorted(args.keys() - expected)
+    if missing or unexpected:
+        details = (['missing: ' + ', '.join(missing)] if missing else []) + (
+            ['unexpected: ' + ', '.join(unexpected)] if unexpected else [])
+        raise ValueError('UBMAX PRO requires a flat creation JSON; ' + '; '.join(details)
+                         + '. See ubmax-pro-schema.')
+    if submit and args.get(CONFIRM) is not True:
+        raise ValueError('UBMAX PRO write requires accept_scheduled_then_pause=true; use --accept-scheduled-then-pause.')
+    import math
+    if not isinstance(args['name'],str) or not 1 <= len(args['name'].strip()) <= 80 or args['name'] != args['name'].strip() or not args['name'].isprintable():
+        raise ValueError('Specify a project name of 1-80 characters.')
+    if args['roi_mode'] not in ('7d','30d'):raise ValueError('Use IAA 7d or 30d ROI mode.')
+    for k,lo,hi in [('budget',100,100000),('roi',0.01,100)]:
+        v=args[k]
+        if type(v) not in (int,float) or not lo <= v <= hi or not math.isfinite(v) or round(v,2)!=v:
+            raise ValueError(f'UBMAX PRO {k} must be numeric in {lo}-{hi}, with at most two decimals.')
+    videos=args['videos']
+    if not isinstance(videos,list) or not 1<=len(videos)<=30:raise ValueError('Provide 1-30 videos with covers.')
+    for video in videos:
+        if not isinstance(video,dict) or set(video)!={'video_id','video_cover_id'} or any(
+            not isinstance(v,str) or not 1<=len(v)<=256 or any(c.isspace() for c in v) for v in video.values()):
+            raise ValueError('Video entries accept video_id and video_cover_id only; per-video titles are not supported.')
+    titles=args['titles']
+    if not isinstance(titles,list) or not 1<=len(titles)<=30 or any(
+        not isinstance(t,str) or not 10<=sum(1 if c.isascii() else 2 for c in t.strip())<=110 for t in titles):
+        raise ValueError('Provide 1-30 shared project titles, each 5-55 characters.')

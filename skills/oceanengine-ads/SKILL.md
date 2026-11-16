@@ -59,3 +59,17 @@ description: 通过已授权的巨量引擎管理网关操作小游戏广告，�
 配置默认在`~/.config/oceanengine-ads/connection.json`，也可用`OCEANENGINE_MANAGEMENT_CONFIG`指定。用隐藏终端输入或管理员提供的本地文件接入；不索要用户在聊天粘贴Secret/Token/管理密钥，不提交配置、素材、日志或回执到Git。
 
 签名请求只发到配置的HTTPS管理网关；禁用重定向。平台权限不足时报告具体缺失能力，不反复索取已有授权、不绕过访问限制。新用途超出现有网关功能时再做开发，不能把客户端的可配置性当成服务端已经支持任意账户或游戏。
+
+## 巨量营销智擎版（UBMAX PRO）
+
+创建先读[智擎版创建 JSON 与命令](references/ubmax-pro.md)。插件需 1.3.15 或更新；用 `ubmax-pro-schema` 获得无需连接的样例。
+
+用 `ads.py --account 账户 ubmax-pro-projects` 读取智擎版项目，可用 `--project-id ID` 精确查找，或用 `--page` 翻页。要求账户已登记且绑定正确游戏、应用具备该接口权限。返回结果按当前游戏实例过滤，平台分页信息是账户级，不是当前游戏总数；一页为空不代表该游戏没有项目。标准 `list` 不查智擎版，智擎版项目也不自动纳入标准项目写操作。
+
+用 `ads.py --account 账户 ubmax-pro-promotions --project-id ID` 查询智擎项目素材（按平台返回结构保留，不转换为普通广告单元）。网关先精确读取同账户同游戏的智擎项目，再调用[素材查询](https://open.oceanengine.com/labels/7/docs/1854927239666825)。
+
+只有用户明确授权删除具体项目时，才用 `ads.py --account 账户 --run-id 唯一标识 ubmax-pro-delete-projects ID --confirm-delete`。先加全局 `--dry-run` 审阅计划。网关只接受明确 ID、确认标记和已暂停项目；任何一个目标在范围外或未暂停则整批停止。平台接收后逐项回读，异常查原 job，不盲目重试。不会先停投再删除。参见[项目删除接口](https://open.oceanengine.com/labels/7/docs/1740944781036608)。
+
+签名操作分别为 `ubmax_pro_promotions`（account_id、project_id、可选 page 与 page_size）与 `ubmax_pro_delete_projects`（account_id、project_ids、confirm_delete=true）。创建使用独立 `ubmax-pro-new-project --args-file JSON`。JSON 只含 `name,budget,roi,roi_mode,videos,titles`；roi_mode 为 7d 或 30d，videos 每项含 video_id/video_cover_id，titles 是项目共享池，不支持每条视频独立手写文案。留用已登记游戏的审核通过调起链接和模板落地页。先使用全局 `--dry-run`，该模式仅做线上只读资产及调起链接核验和生成请求。
+
+官方不提供原子暂停创建。只有用户明确同意“未来排期创建后立即暂停”且确认账户、游戏、预算、ROI、素材和标题后，才去掉预演并使用全局 `--run-id` 和子命令 `--accept-scheduled-then-pause`。服务端指定北京时间当天+14日开始、+15日结束，提交后立即暂停并回读。平台忽略排期、暂停失败或创建返回超时均有风险；发生不确定时按原任务、项目名和排期在后台核对，禁止用新项目名重建，必要时在开始日前人工暂停。建投回执仅核验项目状态及关键设置，素材另用查询核对。未提供独立“暂停新增单元”接口；初始共享素材随项目一次提交。

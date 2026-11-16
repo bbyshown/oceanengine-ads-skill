@@ -11,6 +11,7 @@ import time
 import uuid
 
 import operation_output
+import ubmax_pro_schema
 import remote_client
 import creation_schema as creation
 import settings
@@ -239,7 +240,7 @@ def execute_plan(plan, run_id, *, directory=RUNS, client=None):
         if row['status'] != 'done' or result.get('code', 0) != 0:
             raise RuntimeError('Operation stopped; inspect ' + str(path) + ' before any new write.')
         if step.get('checks'):verify_inventory(result['data'], step['checks'])
-        if step['op'].startswith(('set_', 'delete_', 'new_')) or step['op'] in ('update_ad', 'resume_creation', 'register_account'):
+        if step['op'].startswith(('set_', 'delete_', 'new_')) or step['op'] in ('update_ad', 'resume_creation', 'register_account', 'ubmax_pro_delete_projects', 'ubmax_pro_new_project'):
             if not (result.get('data') or {}).get('verified'):raise RuntimeError('Write lacks verified readback; stop.')
         entry['verified'] = True;save(path, receipt)
     receipt['status'] = 'done';save(path, receipt)
@@ -278,6 +279,15 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Read and save a plan; no writes.')
     parser.add_argument('--account', help='Configured account alias or exact ID; defaults to the explicitly configured account.')
     sub = parser.add_subparsers(dest='command', required=True)
+    sub.add_parser('ubmax-pro-schema',help='Print a fillable UBMAX PRO creation JSON example without connecting.')
+    p=sub.add_parser('ubmax-pro-new-project',help='Preview or explicitly opt into future-scheduled UBMAX PRO creation followed by pause.')
+    p.add_argument('--args-file',type=Path,required=True);p.add_argument('--accept-scheduled-then-pause',action='store_true')
+    p=sub.add_parser('ubmax-pro-projects',help='Read projects from the UBMAX PRO standard project API.')
+    p.add_argument('--project-id',type=int);p.add_argument('--page',type=int,default=1);p.add_argument('--page-size',type=int,default=20)
+    p=sub.add_parser('ubmax-pro-promotions',help='Read UBMAX PRO project materials.')
+    p.add_argument('--project-id',type=int,required=True);p.add_argument('--page',type=int,default=1);p.add_argument('--page-size',type=int,default=20)
+    p=sub.add_parser('ubmax-pro-delete-projects',help='Delete explicitly selected paused UBMAX PRO projects.')
+    p.add_argument('project_ids',type=int,nargs='+');p.add_argument('--confirm-delete',action='store_true')
     for cmd in ('status', 'list', 'capabilities','preflight','ensure-game-asset','ensure-game-events'):sub.add_parser(cmd)
     for cmd in ('start', 'pause', 'delete', 'keep-only'):
         s = sub.add_parser(cmd);s.add_argument('projects', nargs='+')
@@ -331,6 +341,8 @@ def main():
     s = sub.add_parser('history');s.add_argument('--limit', type=int, default=10)
     sub.add_parser('resume').add_argument('saved_run_id')
     args = parser.parse_args()
+    if args.command == 'ubmax-pro-schema':
+        print(json.dumps(ubmax_pro_schema.EXAMPLE,ensure_ascii=False,indent=2));return
     selected=select_account(args.account)
     CLIENT=SelectedClient(selected)
     if args.command in ('status', 'list'):
@@ -354,6 +366,36 @@ def main():
         print(json.dumps(execute_plan(plan,run_id),ensure_ascii=False,indent=2));return
     if args.command == 'account-profile':
         show(read('account_profile'), ROOT / 'data/operations/latest-account-profile.json', args.full_output);return
+    if args.command == 'ubmax-pro-new-project':
+        if args.account is None:raise ValueError('Select an explicit --account for UBMAX PRO.')
+        payload=json.loads(args.args_file.read_text())
+        ubmax_pro_schema.validate_creation(payload)
+        selected_client=SelectedClient(selected)
+        if args.dry_run:
+            show(read('ubmax_pro_create_preview',payload,client=selected_client),
+                 ROOT / 'data/operations/latest-ubmax-pro-create-preview.json',args.full_output);return
+        if not args.accept_scheduled_then_pause or not args.run_id:
+            raise ValueError('Use --dry-run first, then explicit --accept-scheduled-then-pause and a stable --run-id.')
+        plan={'action':'ubmax_pro_new_project','steps':[{'op':'ubmax_pro_new_project',
+            'args':dict(payload,accept_scheduled_then_pause=True)}]}
+        show(execute_plan(plan,args.run_id,client=selected_client),RUNS / args.run_id / 'result.json',args.full_output);return
+    if args.command == 'ubmax-pro-delete-projects':
+        if args.account is None:raise ValueError('Select an explicit --account for UBMAX PRO.')
+        if not args.dry_run and not args.confirm_delete:raise ValueError('Use --confirm-delete for the exact approved project IDs.')
+        plan={'action':'ubmax_pro_delete_projects','steps':[{'op':'ubmax_pro_delete_projects',
+            'args':{'project_ids':args.project_ids,'confirm_delete':args.confirm_delete}}]}
+        if args.dry_run:print(json.dumps(plan,ensure_ascii=False,indent=2));return
+        if not args.run_id:raise ValueError('Use a stable --run-id for UBMAX PRO deletion.')
+        show(execute_plan(plan,args.run_id), RUNS / args.run_id / 'result.json', args.full_output);return
+    if args.command == 'ubmax-pro-promotions':
+        if args.account is None:raise ValueError('Select an explicit --account for UBMAX PRO.')
+        show(read('ubmax_pro_promotions',{'project_id':args.project_id,'page':args.page,'page_size':args.page_size}),
+             ROOT / 'data/operations/latest-ubmax-pro-promotions.json',args.full_output);return
+    if args.command == 'ubmax-pro-projects':
+        if args.account is None: raise ValueError('Select an explicit --account for UBMAX PRO.')
+        query={'page':args.page,'page_size':args.page_size}
+        if args.project_id is not None:query['project_id']=args.project_id
+        show(read('ubmax_pro_projects',query), ROOT / 'data/operations/latest-ubmax-pro-projects.json', args.full_output);return
     if args.command == 'capabilities':show(read('status'), ROOT / 'data/operations/latest-capabilities.json', args.full_output);return
     if args.command == 'preflight':show(read('account_preflight'), ROOT / 'data/operations/latest-preflight.json', args.full_output);return
     if args.command == 'history':show(read('change_history', {'limit': args.limit}), ROOT / 'data/operations/latest-history.json', args.full_output);return

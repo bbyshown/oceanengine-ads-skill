@@ -46,7 +46,8 @@ IAA 七日变现用 `--smart-goal iaa-7d` 生成清单，并先用 `preflight-sm
 先`status`检查服务可用，再以明确`--account`读取`inventory`定位实际ID。单次命令与JSON示例见操作参考。日常调用复用脚本，不重复编写临时API请求。
 
 - 新建营销单元/动态创意固定暂停。批量清单可用 `adgroup_from` 把创意挂到同批较早创建并已回读的营销单元，见接入与操作。运行中父单元新增创意，父单元不受影响。不得通过改名绕过营销唯一性或素材限制。
-- 预算/金额出价的CLI参数以元输入，转换为整数分；原始JSON请求的daily_budget/bid_amount已经以分计。ROI参数是比值，如0.40表示40%，不转分。
+- 动态创意的 `creative_components` 按腾讯原始结构透传，包括 `mini_card_link`、`social_skill`、`image_list`、`image`；具体组合由腾讯按模板和版位校验。复制品牌 H5 主页时保留 `brand[].value.jump_info`（`page_type: PAGE_TYPE_H5_PROFILE`，`page_spec.h5_profile_spec.page_id` 为平台页面 ID）。IAP 清单生成器可传 `--brand-h5-page-id`。主跳转仍须指向登记的小游戏。
+- 预算/金额出价的CLI参数以元输入，最多两位小数，例如 199.99 元转为 19999 分；原始JSON请求的daily_budget/bid_amount已经以分计。ROI参数是比值，如0.40表示40%，不转分。
 - IAA变现ROAS和IAP付费ROAS不能互换。`roi`仅沿用现有明确的ROI目标；没有目标或目标不明确时读取conversion配置，不默选、不假设已经可用。
 - `update-creative`接收v3.0的creative_components。先读现有组件ID与规格，保留未授权变更的组件，不用巨量标题/卖点字段替代。
 - `start/pause`只作用于指定层级和ID，不暗改父/子开关。删除必须有用户明确指令；先暂停目标，先删除动态创意，再删除营销单元。禁止恢复已删除历史批次。

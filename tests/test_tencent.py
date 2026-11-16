@@ -141,6 +141,36 @@ class TencentTests(unittest.TestCase):
         for bad in ({'page_type': 'PAGE_TYPE_H5'}, {'mini_game_id': 'wx0000000000000002'}):
             with self.assertRaises(ValueError): management.guard_jumps(bad, GAME)
 
+    def test_h5_brand_and_components_pass_through_on_create_and_update(self):
+        jump = {'page_type':'PAGE_TYPE_H5_PROFILE','page_spec':{'h5_profile_spec':{'page_id':12345}}}
+        components = {name:[{'value':{}}] for name in ('mini_card_link','social_skill','image_list','image','action_button')}
+        components['brand']=[{'value':{'jump_info':jump}}]
+        created=self.execute('tencent_new_creative',{'account_id':123,'adgroup_id':11,
+           'payload':{'dynamic_creative_name':'Brand test','creative_components':components}})
+        actual=created['data']['after']['creative_components']
+        self.assertEqual({k:actual[k] for k in components},components)
+        self.assertEqual(actual['main_jump_info'][0]['value']['page_spec']['wechat_mini_game_spec']['mini_game_id'],GAME)
+        updated=self.execute('tencent_update_creative',{'account_id':123,
+            'dynamic_creative_id':created['data']['dynamic_creative_id'],'patch':{'creative_components':components}})
+        self.assertTrue(updated['data']['verified'])
+
+    def test_h5_does_not_weaken_game_or_account_scope(self):
+        jump={'page_type':'PAGE_TYPE_H5_PROFILE','page_spec':{'h5_profile_spec':{'page_id':12345}}}
+        for bad in ({'main_jump_info':[{'value':jump}]},
+                    {'brand':[{'value':{'jump_info':dict(jump,jumpinfo_account_id=456)}}]},
+                    {'brand':[{'value':{'jump_info':dict(jump,backups=[{'page_type':'PAGE_TYPE_DEFAULT'}])}}]},
+                    {'brand':[{'value':{'jump_info':dict(jump,page_spec={'h5_profile_spec':{'page_id':True}})}}]}):
+            with self.assertRaises(ValueError):management.guard_jumps(bad,GAME,123)
+
+    def test_decimal_yuan_bid_becomes_integer_fen(self):
+        fen=schema.money('199.99')
+        self.assertEqual((fen,type(fen)),(19999,int))
+        result=self.execute('tencent_update_adgroup',{'account_id':123,'adgroup_id':11,'patch':{'bid_amount':fen}})
+        self.assertEqual(result['data']['after']['bid_amount'],19999)
+        self.assertEqual(schema.smart_scene_patch(smart_group(),bid_yuan='199.99')['smart_delivery_scene_spec']
+            ['smart_delivery_goal_spec']['mini_game_promotion_spec']['register_cost'],19999)
+        with self.assertRaises(ValueError):schema.money('199.999')
+
     def test_parent_delete_requires_paused_parent_and_no_children(self):
         args = {'account_id': 123, 'adgroup_id': 11}
         with self.assertRaises(ValueError): self.execute('tencent_delete_adgroup', args)

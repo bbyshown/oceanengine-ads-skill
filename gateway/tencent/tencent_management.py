@@ -63,14 +63,35 @@ def verified_fields(actual, expected, *, creative=False):
     return subset(actual, expected)
 
 
-def guard_jumps(value, game):
+def guard_jumps(value, game, account_id=None, path=()):
     if isinstance(value, dict):
-        if 'page_type' in value and value['page_type'] != 'PAGE_TYPE_WECHAT_MINI_GAME': raise ValueError('Tencent creative destination must remain the registered WeChat mini-game.')
-        if 'mini_game_id' in value and value['mini_game_id'] != game: raise ValueError('Tencent creative points at a different mini-game.')
-        if 'page_spec' in value and set(value['page_spec']) - {'wechat_mini_game_spec'}: raise ValueError('Unregistered Tencent landing-page spec.')
-        for child in value.values(): guard_jumps(child, game)
+        if 'jumpinfo_account_id' in value and value['jumpinfo_account_id'] not in ('', None) and str(value['jumpinfo_account_id']) != str(account_id):
+            raise ValueError('Tencent creative jump account must match the selected account.')
+        if value.get('page_type') == 'PAGE_TYPE_H5_PROFILE':
+            # Exact brand item only; no H5 primary jump, alternate URL or backup.
+            brand_jump = (len(path) == 4 and path[0] == 'brand' and type(path[1]) is int
+                          and path[2:] == ('value','jump_info'))
+            spec = value.get('page_spec')
+            profile = spec.get('h5_profile_spec') if isinstance(spec,dict) else None
+            page = profile.get('page_id') if isinstance(profile,dict) else None
+            if (not brand_jump or set(value) - {'page_type','page_spec','jumpinfo_account_id','platform_type','backups'}
+                    or value.get('backups') not in (None, [], {})
+                    or not isinstance(spec, dict) or set(spec) != {'h5_profile_spec'} or not isinstance(profile,dict)
+                    or set(profile) - {'page_id','hide_company_info'}
+                    or ('hide_company_info' in profile and type(profile['hide_company_info']) is not bool)):
+                raise ValueError('Tencent H5 homepage requires a platform page_id in brand[].value.jump_info only, with no other destination.')
+            schema.h5_page_id(page)
+            return
+        if 'page_type' in value and value['page_type'] != 'PAGE_TYPE_WECHAT_MINI_GAME':
+            raise ValueError('Tencent creative destination must remain the registered WeChat mini-game.')
+        if 'mini_game_id' in value and value['mini_game_id'] != game:
+            raise ValueError('Tencent creative points at a different mini-game.')
+        if 'page_spec' in value and (not isinstance(value['page_spec'],dict) or set(value['page_spec']) - {'wechat_mini_game_spec'}):
+            raise ValueError('Unregistered Tencent landing-page spec.')
+        for key, child in value.items(): guard_jumps(child, game, account_id, path+(key,))
     elif isinstance(value, list):
-        for child in value: guard_jumps(child, game)
+        for i, child in enumerate(value): guard_jumps(child, game, account_id, path+(i,))
+
 
 
 def verify_smart_conversion(api, account_id, wanted):
@@ -118,7 +139,8 @@ def execute(op, args, *, root, api=None):
                 'operators': {k: {'configured': bool(v.get('user_token')), 'valid': runtime.valid_operator(v),
                     'expires_at': v.get('user_token_expires_at')} for k,v in cfg.get('operators', {}).items()},
                 'live_account_verification': 'not_checked_by_status', 'create_policy': 'paused_only', 'automatic_pause': False,
-                'smart_delivery_platforms': [schema.SMART_PLATFORM], 'smart_delivery_support_version': 2}
+                'smart_delivery_platforms': [schema.SMART_PLATFORM], 'smart_delivery_support_version': 2,
+                'creative_component_passthrough': True, 'brand_h5_profile': True, 'base_bid_unit': 'fen'}
     cfg = runtime.load_config(root, require_accounts=op not in ('tencent_authorize', 'tencent_discover_accounts', 'tencent_register_accounts', 'tencent_operator_authorize'), profile_id=profile_id)
     folder = runtime.directory(root, cfg)
     if op == 'tencent_authorize': return {'code': 0, 'data': {'authorization_url': runtime.authorize_url(root, cfg)}}
@@ -195,7 +217,7 @@ def execute(op, args, *, root, api=None):
             if isinstance(wanted.get('creative_components'), dict):
                 wanted['creative_components'].setdefault('main_jump_info', [{'value': {'page_type': 'PAGE_TYPE_WECHAT_MINI_GAME',
                     'page_spec': {'wechat_mini_game_spec': {'mini_game_id': game}}}}])
-                guard_jumps(wanted['creative_components'], game)
+                guard_jumps(wanted['creative_components'], game, account_id)
         else:
             required = {'adgroup_name', 'marketing_goal', 'marketing_carrier_type', 'marketing_carrier_detail',
                         'marketing_asset_outer_spec', 'begin_date', 'end_date', 'time_series', 'daily_budget', 'optimization_goal'}
@@ -231,7 +253,7 @@ def execute(op, args, *, root, api=None):
             elif schema.is_smart(before) and set(wanted) & {'deep_conversion_spec', 'deep_conversion_worth_rate', 'deep_conversion_worth_advanced_rate', 'bid_amount'}:
                 raise ValueError('Use smart_delivery_scene_spec to update smart ROI or base bid.')
 
-        if creative: guard_jumps(wanted.get('creative_components', {}), parent['marketing_carrier_detail']['marketing_carrier_id'])
+        if creative: guard_jumps(wanted.get('creative_components', {}), parent['marketing_carrier_detail']['marketing_carrier_id'], account_id)
         if deleting:
             if before.get('configured_status') != 'AD_STATUS_SUSPEND': raise ValueError('Pause the Tencent object before deletion.')
             if not creative:

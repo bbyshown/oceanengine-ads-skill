@@ -87,6 +87,12 @@ def integer(value):
     if type(value) is not int or value <= 0: raise ValueError('Use a positive integer ID.')
 
 
+def h5_page_id(value):
+    if type(value) not in (int,str) or not re.fullmatch('[1-9][0-9]{0,18}',str(value)) or int(value) > 2**63-1:
+        raise ValueError('Use a positive Tencent H5 homepage page_id.')
+    return int(value)
+
+
 def money(yuan):
     if isinstance(yuan, bool): raise ValueError('Amount must be in yuan with at most two decimals.')
     try: value = Decimal(str(yuan))
@@ -219,4 +225,3 @@ def validate(op, args):
         if not re.fullmatch(r'[A-Za-z0-9_.-]{1,128}', args['filename']): raise ValueError('Use a safe basename.')
         raw = base64.b64decode(args['base64'], validate=True)
         if not 0 < len(raw) <= (10 if args['kind'] == 'image' else 50) * 1024 * 1024: raise ValueError('Gateway upload limits: images10MiB, videos50MiB.')
-

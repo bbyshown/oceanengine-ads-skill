@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from tencent_ads import validate_steps
-from tencent_schema import money, ratio, SMART_GOALS, SMART_PLATFORM, SMART_SEVEN_DAY_MONETIZATION
+from tencent_schema import money, ratio, SMART_GOALS, SMART_PLATFORM, SMART_SEVEN_DAY_MONETIZATION, h5_page_id
 
 # The manually selected placement set used by the verified no-Channels workflow.
 NO_CHANNELS_SITES = [
@@ -26,6 +26,7 @@ def main():
     parser.add_argument('--video', required=True)
     parser.add_argument('--cover', required=True)
     parser.add_argument('--brand-image', required=True, help='Uploaded brand image ID; verify template dimensions first.')
+    parser.add_argument('--brand-h5-page-id', type=h5_page_id, help='Optional Tencent brand H5 homepage asset ID.')
     parser.add_argument('--brand-name', required=True)
     parser.add_argument('--description', required=True)
     parser.add_argument('--name-prefix', required=True, help='A distinct name for this batch; preserve it on recovery.')
@@ -84,6 +85,9 @@ def main():
         },
         'configured_status': 'AD_STATUS_SUSPEND',
     }
+    if args.brand_h5_page_id:
+        creative['creative_components']['brand'][0]['value']['jump_info'] = {
+            'page_type': 'PAGE_TYPE_H5_PROFILE', 'page_spec': {'h5_profile_spec': {'page_id': args.brand_h5_page_id}}}
     steps = [{'op': 'tencent_new_adgroup', 'args': dict(selection, monetization=mode, payload=group)},
              {'op': 'tencent_new_creative', 'adgroup_from': 1, 'args': dict(selection, payload=creative)}]
     validate_steps(steps)

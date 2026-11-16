@@ -663,7 +663,7 @@ class CreationCliRegressionTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as folder:
                 path=Path(folder)/'payload.json';path.write_text(json.dumps(payload))
                 argv=['tencent_ads.py','--account','123','--profile','team-example','--dry-run',command,'--mode','IAA','--args-file',str(path)]
-                with patch('sys.argv',argv),patch.object(client,'Gateway'),redirect_stdout(io.StringIO()) as output:
+                with patch('sys.argv',argv),patch.object(client,'Gateway',return_value=type('TestGateway',(),{'cfg':{}})()),redirect_stdout(io.StringIO()) as output:
                     client.main()
                 step=json.loads(output.getvalue())['steps'][0]
                 self.assertEqual(step['op'],'tencent_new_adgroup')
@@ -674,7 +674,7 @@ class CreationCliRegressionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'payload.json';path.write_text(json.dumps(new_group()))
             argv=['tencent_ads.py','--account','123','--dry-run','new-smart','--mode','IAA','--args-file',str(path)]
-            with patch('sys.argv',argv),patch.object(client,'Gateway'),self.assertRaises(ValueError):client.main()
+            with patch('sys.argv',argv),patch.object(client,'Gateway',return_value=type('TestGateway',(),{'cfg':{}})()),self.assertRaises(ValueError):client.main()
 
 
 class SharedOperatorTests(unittest.TestCase):
@@ -812,7 +812,7 @@ class OnboardingCliTests(unittest.TestCase):
                             (['bind-operator','--operator','team-main','--ids','123','456'],'tencent_bind_operator'),
                             (['operator-authorize','--operator','team-main'],'tencent_operator_authorize')]:
                 argv=['tencent_ads.py','--profile','test-team','--dry-run']+tail
-                with patch('sys.argv',argv),patch.object(client,'Gateway'),redirect_stdout(io.StringIO()) as output:
+                with patch('sys.argv',argv),patch.object(client,'Gateway',return_value=type('TestGateway',(),{'cfg':{}})()),redirect_stdout(io.StringIO()) as output:
                     client.main()
                 v=json.loads(output.getvalue());self.assertEqual(v['op'],op);self.assertNotIn('account_id',v['args'])
                 self.assertFalse(v['advertising_settings_changed'])
@@ -969,3 +969,26 @@ class TokenMaintenanceTests(unittest.TestCase):
         self.assertIn('OnUnitActiveSec=15min', timer)
         self.assertIn('WantedBy=timers.target', timer)
         self.assertNotIn('adgroups', service + timer)
+
+
+class PersonalTencentTests(unittest.TestCase):
+    def test_member_copies_app_but_never_owner_tokens_or_account_scope(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            runtime.provision_profile(root,'owner-app',client_id=12,client_secret='example-app-secret',
+                redirect_uri='https://example.invalid/manage/v1/tencent/oauth/callback')
+            owner=runtime.directory(root,profile_id='owner-app')
+            runtime.save(owner/'tokens.json',{'access_token':'owner-token'})
+            connection=runtime.provision_member(root,'member-alice',template_profile='owner-app')
+            cfg=runtime.load_config(root,require_accounts=False,profile_id='member-alice')
+            self.assertEqual(cfg['accounts'],{})
+            self.assertTrue(cfg['write_enabled'])
+            self.assertFalse((runtime.directory(root,profile_id='member-alice')/'tokens.json').exists())
+            self.assertEqual(runtime.member_key(root,'member-alice').hex(),connection['key'])
+            with self.assertRaises(runtime.Rejected):
+                runtime.provision_member(root,'member-alice',template_profile='owner-app')
+            for op,args in [('status',{}),('tencent_status',{'profile_id':'owner-app'}),
+                            ('tencent_bind_operator',{'operator_id':'someone-else'}),
+                            ('tencent_new_adgroup',{'account_id':99})]:
+                with self.assertRaises(runtime.Rejected):runtime.member_scope(root,'member-alice',op,args)
+            self.assertEqual(runtime.member_scope(root,'member-alice','tencent_authorize',{}),{'profile_id':'member-alice'})

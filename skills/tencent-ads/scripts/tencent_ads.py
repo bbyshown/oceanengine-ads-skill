@@ -48,6 +48,8 @@ class Gateway:
         if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('', '/'):
             raise ValueError('Use an HTTPS gateway origin without credentials or path.')
         if not re.fullmatch('[A-Fa-f0-9]{64}', str(cfg.get('key', ''))): raise ValueError('Management key must have64 hexadecimal characters.')
+        if 'member_id' in cfg and (not isinstance(cfg['member_id'],str) or not re.fullmatch(r'member-[a-z0-9][a-z0-9_-]{0,39}',cfg['member_id'])):
+            raise ValueError('Invalid personal Tencent gateway member ID.')
         if cfg.get('access_mode', 'read_only') not in ('read_only', 'operator'): raise ValueError('Use read_only or operator.')
 
     def request(self, route, body):
@@ -61,9 +63,11 @@ class Gateway:
         if len(raw) > 72 * 1024 * 1024: raise ValueError('Gateway request exceeds72MiB.')
         stamp, nonce = str(int(time.time())), uuid.uuid4().hex
         message = ('POST\n' + path + '\n' + stamp + '\n' + nonce + '\n' + hashlib.sha256(raw).hexdigest()).encode()
+        member=self.cfg.get('member_id')
+        if member:message += ('\nmember:' + member).encode()
         signature = hmac.new(bytes.fromhex(self.cfg['key']), message, hashlib.sha256).hexdigest()
         req = Request(self.cfg['base_url'].rstrip('/') + path, data=raw, method='POST', headers={
-            'Content-Type': 'application/json', 'X-Manage-Time': stamp, 'X-Manage-Nonce': nonce, 'X-Manage-Signature': signature})
+            'Content-Type': 'application/json', 'X-Manage-Time': stamp, 'X-Manage-Nonce': nonce, 'X-Manage-Signature': signature, **({'X-Manage-Member':member} if member else {})})
         with build_opener(NoRedirect()).open(req, timeout=45) as response: return json.load(response)
 
 
@@ -156,6 +160,7 @@ def run(client, steps, run_id, state=STATE):
 def connection_from_oceanengine(path, access='read_only'):
     """Explicitly pair to the same team gateway, without importing platform scope."""
     source = Gateway(path).cfg
+    if source.get('member_id'):raise ValueError('A personal Tencent connection cannot be imported as a team key.')
     cfg = {'base_url': source['base_url'], 'key': source['key'], 'access_mode': access}
     Gateway.validate(cfg)
     return cfg
@@ -179,6 +184,7 @@ def main():
     origin.add_argument('--base-url')
     origin.add_argument('--from-oceanengine-config', type=Path, help='Explicitly reuse the same team gateway connection; no account/OAuth scope is copied.')
     c.add_argument('--key-file', type=Path)
+    c.add_argument('--member-id', help='Your personal gateway member ID.')
     c.add_argument('--access', choices=['read_only', 'operator'], default='read_only');c.add_argument('--overwrite', action='store_true')
     for name in ('new-adgroup', 'new-smart', 'preflight-smart', 'new-creative'):
         p = sub.add_parser(name);p.add_argument('--args-file', type=Path, required=True)
@@ -203,16 +209,20 @@ def main():
         target = args.config or Path(os.environ.get('TENCENT_MANAGEMENT_CONFIG', str(Path.home() / '.config/tencent-ads/connection.json')))
         if target.exists() and not args.overwrite: raise ValueError('Configuration exists; inspect it before explicit --overwrite.')
         if args.from_oceanengine_config:
-            if args.key_file: raise ValueError('Do not combine connection import with --key-file.')
+            if args.key_file or args.member_id: raise ValueError('Do not combine connection import with --key-file or --member-id.')
             if args.from_oceanengine_config.expanduser().resolve() == target.expanduser().resolve():
                 raise ValueError('Tencent destination must not overwrite the Oceanengine source configuration.')
             cfg = connection_from_oceanengine(args.from_oceanengine_config, args.access)
         else:
             key = args.key_file.read_text().strip() if args.key_file else getpass.getpass('Management key (hidden): ').strip()
             cfg = {'base_url': args.base_url, 'key': key, 'access_mode': args.access}
+            if args.member_id:cfg['member_id']=args.member_id
         Gateway.validate(cfg);save(target.expanduser(), cfg)
         print('Tencent local gateway profile saved with0600 permissions. No advertising changed.');return
     client = Gateway(args.config)
+    if client.cfg.get('member_id'):
+        if args.profile and args.profile != client.cfg['member_id']:raise ValueError('Cannot select another member profile.')
+        args.profile=client.cfg['member_id']
     selection = {'profile_id': args.profile} if args.profile else {}
     if args.command == 'status': print(json.dumps(read(client, 'tencent_status', selection), ensure_ascii=False, indent=2));return
     if args.command == 'accounts':

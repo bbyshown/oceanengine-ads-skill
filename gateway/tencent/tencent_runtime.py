@@ -328,6 +328,8 @@ def callback(root, query):
         profile_id = profile_name(given[5:].split('.', 1)[0])
         if '.' not in given: raise Rejected('Invalid Tencent profile state.')
     cfg = load_config(root, require_accounts=False, profile_id=profile_id)
+    if cfg.get('member_profile'):
+        member_key(root, profile_id)
     with locked(root, cfg) as path:
         file = path / 'oauth-state.json'
         if not file.exists(): raise Rejected('No pending Tencent authorization; request a fresh link.')
@@ -437,6 +439,8 @@ def user_callback(root, query):
         raise Rejected('Invalid Tencent user callback state.')
     profile_id = profile_name(given[5:].split('.', 1)[0])
     cfg = load_config(root, require_accounts=False, profile_id=profile_id)
+    if cfg.get('member_profile'):
+        member_key(root, profile_id)
     with locked(root, cfg) as path:
         file = path / 'user-authorization.json'
         if not file.exists(): raise Rejected('No pending Tencent user authorization.')
@@ -521,3 +525,55 @@ class API:
             common.update({k: v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, separators=(',', ':')) for k, v in data.items()})
         result = fetch_json(Request('https://api.e.qq.com/v3.0/' + endpoint + '?' + urlencode(common), data=body, headers=headers, method='POST' if post else 'GET'))
         return scrub(result, self.cfg, {'access_token': token})
+
+
+def member_key(root, profile):
+    if not isinstance(profile,str) or not re.fullmatch(r'member-[a-z0-9][a-z0-9_-]{0,39}',profile):
+        raise Rejected('Invalid Tencent member.')
+    file=directory(root,profile_id=profile)/'member.key.json'
+    try:
+        if file.stat().st_mode & 0o077:raise ValueError()
+        value=json.loads(file.read_text())['key']
+        if not isinstance(value,str) or not re.fullmatch(r'[a-f0-9]{64}',value):raise ValueError()
+        return bytes.fromhex(value)
+    except (OSError,ValueError,KeyError,TypeError):
+        raise Rejected('Tencent member connection unavailable.') from None
+
+
+def provision_member(root, profile, *, template_profile):
+    """Owner shell only. Return a one-time local connection bundle, never HTTP."""
+    if not re.fullmatch(r'member-[a-z0-9][a-z0-9_-]{0,39}',profile):
+        raise Rejected('Use a member- prefixed ID.')
+    source=load_config(root,require_accounts=False,profile_id=template_profile)
+    if source.get('application_type')!='third_party':
+        raise Rejected('Select the approved Tencent third-party application template.')
+    selected={'_profile_id':profile}
+    with locked(root,selected) as folder:
+        config=folder/'config.json'
+        if config.exists() or (folder/'tokens.json').exists() or (folder/'member.key.json').exists():
+            raise Rejected('That member profile already exists; no credentials were replaced.')
+        settings={k:source[k] for k in ('client_id','client_secret','redirect_uri','application_type',
+            'oauth_token_host','oauth_token_remote_ip') if k in source}
+        key=secrets.token_hex(32)
+        save(config,dict(settings,accounts={},write_enabled=True,member_profile=True))
+        save(folder/'member.key.json',{'key':key})
+    url=urlsplit(source['redirect_uri'])
+    return {'base_url':f'{url.scheme}://{url.netloc}','member_id':profile,'access_mode':'operator','key':key}
+
+
+def member_scope(root, profile, op, args):
+    import tencent_schema as schema
+    if not isinstance(op,str) or op not in schema.OPS or not isinstance(args,dict):
+        raise Rejected('Member connections are limited to Tencent advertising operations.')
+    if 'profile_id' in args and args['profile_id'] != profile:
+        raise Rejected('Tencent member cannot select another credential profile.')
+    bound=dict(args,profile_id=profile)
+    if op in ('tencent_operator_authorize','tencent_bind_operator','tencent_register_accounts'):
+        if 'operator_id' in bound and bound['operator_id'] != 'self':
+            raise Rejected('Tencent member must use their own operator ID: self.')
+    if op in schema.WRITES - {'tencent_authorize'}:
+        cfg=load_config(root,require_accounts=False,profile_id=profile)
+        account=cfg['accounts'].get(str(bound.get('account_id')), {})
+        if account.get('operator_id')!='self' or not valid_operator(operator_credential(cfg, bound.get('account_id'))):
+            raise Rejected('Register this account and bind your valid operator self before sending advertising writes.')
+    return bound

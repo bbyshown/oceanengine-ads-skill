@@ -113,6 +113,7 @@ def execute(op, args, *, root, api=None):
                     'source': 'operator' if a.get('operator_id') else 'legacy_account'}
                     for k, a in cfg.get('accounts', {}).items()},
                 'write_enabled': cfg.get('write_enabled') is True,
+                'member_connection_version': 1, 'personal_connection': cfg.get('member_profile') is True,
                 'operator_scope_version': 1, 'registration_version': 1,
                 'operators': {k: {'configured': bool(v.get('user_token')), 'valid': runtime.valid_operator(v),
                     'expires_at': v.get('user_token_expires_at')} for k,v in cfg.get('operators', {}).items()},

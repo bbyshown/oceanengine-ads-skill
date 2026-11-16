@@ -102,3 +102,17 @@ python3 "$T/scripts/tencent_ads.py" --profile customer-b --account 123 \
 登记与操作人绑定只改网关配置；不新建广告、不修改投放设置。自动跳过失败账户或放大游戏范围都不支持。提交结果不确定先按原run-id查回执，不换ID重复提交。网关侧安装必须包含新增tencent_onboarding.py；客户端更新不能代替服务端部署。
 
 尚未登记任何账户的新档案，也可先完成一次operator-authorize，再带--operator批量登记；认证不会自动增加账户或打开广告写入。
+
+
+## 个人连接（团队多人）
+
+管理员在服务端以网关服务身份调用 `tencent_member_admin.py issue member-NAME --template-profile 已批准第三方应用档案 --out 私密路径`，NAME 使用小写字母和数字。只复制批准的应用信息，不带原 OAuth、操作人凭据或账户。连接文件包含个人密钥，仅通过团队批准的私密渠道交给本人。不要给同事管理端共用密钥。撤销用 `tencent_member_admin.py revoke member-NAME`；不删除审计和平台凭据。老共用密钥仍有管理员权限；若已发给同事，迁移后需协调单独轮换。
+
+同事将个人连接 JSON 保存为 0600，以 `tencent_ads.py --config 个人连接.json` 作命令前缀（也可存为默认连接）。客户端自动选个人档案，不传 --profile；网关拒绝跨档案、跨任务和非腾讯操作。
+
+1. `authorize` 获取个人 Tencent OAuth 链接，用自己具备该账户权限的腾讯身份确认；链接不转交别人。回到客户端用 `status` 核对授权。
+2. `accounts --ids 实际账户ID` 查自己的 OAuth 可见性。平台可见且 managed=false 才是网关未登记。看不到则先解决平台授权，不能套用管理员 Token。
+3. `operator-authorize --operator self`，打开私密回执中的链接，个人完成组织认证。已有账户用 `bind-operator --operator self --ids 实际账户ID`；新账户用 `register-accounts --manifest 账户游戏清单.json --operator self`。清单仅包含 account_id 与 mini_game_ids。平台账户、游戏转化资产、组织关系均须通过。
+4. 按业务确认的目标和素材使用普通暂停创建、智投预检或批建；组织检查失败会阻止广告写入。平台权限与实际创建支持按广告类型和目标验证。
+
+每位同事绑定自己的 `self`；不是跨人共享令牌。个人 OAuth 档案已授权时不会覆盖原 Token；如果腾讯 OAuth 本身不覆盖另一个授权主体，需要另行建立该主体的个人连接。此版本仍共用单队列；多人可分别提交，但网关按顺序执行。

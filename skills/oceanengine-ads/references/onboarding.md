@@ -150,3 +150,8 @@ python3 "$SKILL_DIR/scripts/setup.py" authorization-status new-team
 `doctor`账户级返回版本8可能是兼容协议版本，不能单凭该值断言部署落后；结合实际操作列表与读取到的账户/游戏核对。遇TLS/超时先查网络及实际任务，不把读取失败当成未授权。
 
 排查回传最小集合：宿主与操作系统、技能版本、脱敏后的base_url/实际脚本路径、目标账户/游戏、profile、doctor输出、原始报错和run-id/job_id。不要提供密钥、Secret、Token、完整connection.json或带授权码的回调URL。
+
+
+授权状态用 `setup.py authorization-status 档案` 查看。访问令牌到期前 3 小时开始自动续期。限流时按恢复窗口重试，刷新结果不明或凭证被拒后可用 `setup.py authorize-profile 档案 --recover --run-id 唯一标识` 获取新的授权链接。完成授权后，网关会核验新凭证能读取该档案下的每个已绑定账户，再切换凭证。
+
+将已登记账户换到另一个有效授权档案时，用 `setup.py rebind-profile 账号别名 --from-profile 旧档案 --profile 新档案 --run-id 唯一标识`。默认 OAuth 身份用 `default` 表示。加 `--dry-run` 可预览参数。网关用目标档案实时核验该账户与原游戏的访问权限，通过后更新账户的档案绑定。

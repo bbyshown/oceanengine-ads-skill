@@ -65,7 +65,7 @@ def add_account(pair, run_id, *, dry_run=False, config_path=None,profile_id=None
             'scope_changed': result.get('scope_changed'), 'ad_mutations_performed': False, 'run_id': run_id}
 
 
-def authorize_profile(profile_id, run_id, *, dry_run=False):
+def authorize_profile(profile_id, run_id, *, dry_run=False, recover=False):
     import ads
     if (not isinstance(profile_id,str) or not re.fullmatch(r'[a-z][a-z0-9_-]{3,47}',profile_id)
             or profile_id in {'default','primary','legacy'}):
@@ -74,7 +74,10 @@ def authorize_profile(profile_id, run_id, *, dry_run=False):
     if cfg['access_mode']!='operator':raise PermissionError('Authorization link creation requires an authorized operator profile.')
     if not re.fullmatch(r'[A-Za-z0-9_-]{8,64}',run_id):raise ValueError('Use a stable 8–64 character run-id.')
     client=ads.SelectedClient(settings.select_account(config=cfg))
-    plan={'action':'isolated_oauth_authorize','steps':[{'op':'oauth_profile_authorize','args':{'profile_id':profile_id}}]}
+    args = {'profile_id': profile_id}
+    if recover:
+        args['recover'] = True
+    plan = {'action': 'isolated_oauth_authorize', 'steps': [{'op': 'oauth_profile_authorize', 'args': args}]}
     if dry_run:return {'status':'preview','plan':plan}
     receipt=ads.execute_plan(plan,run_id,client=client)
     if receipt['status']!='done':return {'status':receipt['status'],'run_id':run_id,'profile_id':profile_id}
@@ -116,3 +119,20 @@ def rebind_account(entry, run_id, from_game, game, *, dry_run=False, profile_id=
     if data.get('rebound_from') != from_game or data.get('scope_changed') is not True:
         raise ValueError('Gateway did not confirm the rebind; nothing local was changed.')
     return dict(data, status='done', run_id=run_id, local_alias=alias)
+
+
+def rebind_profile(account, source, destination, run_id, *, dry_run=False):
+    import ads
+    cfg = settings.load()
+    if cfg['access_mode'] != 'operator':
+        raise PermissionError('Rebinding requires an authorized operator profile.')
+    target = settings.select_account(account, cfg)
+    if source == destination:
+        raise ValueError('Use distinct source and target profiles.')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{8,64}', run_id):
+        raise ValueError('Use a stable 8–64 character run-id.')
+    args = {'target_account_id': target, 'from_profile_id': source, 'profile_id': destination}
+    plan = {'action': 'rebind_account', 'steps': [{'op': 'rebind_account', 'args': args}]}
+    if dry_run:
+        return {'status': 'preview', 'plan': plan}
+    return ads.execute_plan(plan, run_id, client=ads.SelectedClient(target))

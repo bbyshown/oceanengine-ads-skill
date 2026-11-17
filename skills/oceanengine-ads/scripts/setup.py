@@ -37,6 +37,13 @@ def main():
     a.add_argument('--dry-run',action='store_true');a.add_argument('--profile')
     a=s.add_parser('authorize-profile',help='Create a separate OAuth authorization link, without replacing current credentials.')
     a.add_argument('profile_id');a.add_argument('--run-id',required=True);a.add_argument('--dry-run',action='store_true')
+    a.add_argument('--recover', action='store_true', help='Recover a failed or expired existing authorization.')
+    a = s.add_parser('rebind-profile', help='Change the OAuth profile of a registered account.')
+    a.add_argument('account')
+    a.add_argument('--from-profile', required=True)
+    a.add_argument('--profile', required=True)
+    a.add_argument('--run-id', required=True)
+    a.add_argument('--dry-run', action='store_true')
     s.add_parser('authorization-status').add_argument('profile_id')
     m=s.add_parser('monitor-config');m.add_argument('--account');m.add_argument('--project',required=True)
     m.add_argument('--promotion-id',type=int);m.add_argument('--overwrite',action='store_true')
@@ -63,7 +70,11 @@ def main():
               dry_run=args.dry_run,profile_id=args.profile),ensure_ascii=False,indent=2))
     elif args.command=='authorize-profile':
         import account_access
-        print(json.dumps(account_access.authorize_profile(args.profile_id,args.run_id,dry_run=args.dry_run),ensure_ascii=False,indent=2))
+        print(json.dumps(account_access.authorize_profile(args.profile_id,args.run_id,dry_run=args.dry_run,recover=args.recover),ensure_ascii=False,indent=2))
+    elif args.command=='rebind-profile':
+        import account_access
+        print(json.dumps(account_access.rebind_profile(args.account,args.from_profile,args.profile,args.run_id,
+              dry_run=args.dry_run),ensure_ascii=False,indent=2))
     elif args.command=='authorization-status':
         import ads
         print(json.dumps(ads.read('oauth_profile_status',{'profile_id':args.profile_id})['data'],ensure_ascii=False,indent=2))

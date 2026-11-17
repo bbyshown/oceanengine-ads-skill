@@ -252,3 +252,17 @@ class LandingPageTests(unittest.TestCase):
         self.assertEqual(items[0]['ad']['landing_page'],
                          'https://www.chengzijianzhan.com/tetris/page/7642235445527609382')
         self.assertNotIn('landing_page', items[1]['ad'])
+
+
+class CreateCtaTests(unittest.TestCase):
+    def test_batch_manifest_preserves_custom_buttons(self):
+        import ads
+        rows = [{'name': 'a', 'video_id': 'v1', 'cover_id': 'c1', 'roi_goal': .5,
+                 'call_to_action_buttons': ['立即玩', '立即体验']},
+                {'name': 'b', 'video_id': 'v2', 'cover_id': 'c2', 'roi_goal': .5}]
+        plan = ads.creation_plan(ads.batch_items(rows, 300), 'cta-batch-test')
+        self.assertEqual(plan['steps'][0]['args']['ad']['call_to_action_buttons'], ['立即玩', '立即体验'])
+        self.assertNotIn('call_to_action_buttons', plan['steps'][1]['args']['ad'])
+        rows[0]['call_to_action_buttons'] = ['玩']
+        with self.assertRaisesRegex(ValueError, 'call_to_action_buttons'):
+            ads.creation_plan(ads.batch_items(rows, 300), 'cta-batch-test')

@@ -202,10 +202,10 @@ def batch_items(rows, budget, roi=None, roi_start=None, roi_end=None, prefix='',
     if roi is None and roi_start is None and any('roi_goal' not in row for row in rows):raise ValueError('Every project requires an explicit ROI coefficient.')
     output = []
     for i, row in enumerate(rows):
-        if not isinstance(row, dict) or set(row) - {'name','video_id','cover_id','titles','orientation','budget','roi_goal','product_image_id','videos','roi_mode','image_material_list','carousel_material_list','landing_page'}:raise ValueError('Unsupported manifest fields.')
+        if not isinstance(row, dict) or set(row) - {'name','video_id','cover_id','titles','orientation','budget','roi_goal','product_image_id','videos','roi_mode','image_material_list','carousel_material_list','landing_page','call_to_action_buttons'}:raise ValueError('Unsupported manifest fields.')
         goal = row.get('roi_goal', roi if roi_start is None else round(roi_start + (roi_end - roi_start) * i / max(len(rows) - 1, 1), 4))
         name = prefix + row['name']
-        ad = {k: row[k] for k in ('video_id','cover_id','titles','orientation','product_image_id','videos','image_material_list','carousel_material_list','landing_page') if k in row};ad['name'] = name + '_广告'
+        ad = {k: row[k] for k in ('video_id','cover_id','titles','orientation','product_image_id','videos','image_material_list','carousel_material_list','landing_page','call_to_action_buttons') if k in row};ad['name'] = name + '_广告'
         if 'product_image_id' not in ad and product_image_id is not None:ad['product_image_id']=product_image_id
         project = {'name': name, 'budget': row.get('budget', budget), 'roi_goal': goal}
         if 'roi_mode' in row:project['roi_mode'] = row['roi_mode']
@@ -328,6 +328,7 @@ def main():
         s.add_argument('--images-file', type=Path)
         s.add_argument('--carousels-file', type=Path)
         s.add_argument('--product-image-id')
+        s.add_argument('--cta', action='append', help='Call-to-action text, e.g. 立即玩; repeat for multiple buttons.')
         s.add_argument('--landing-page',help='Override the game landing page for this ad (https://www.chengzijianzhan.com/tetris/page/<id>).')
         s.add_argument('--title', action='append');s.add_argument('--orientation', choices=['VERTICAL','HORIZONTAL'])
     s = sub.add_parser('batch-create');s.add_argument('--manifest', type=Path, required=True);s.add_argument('--budget', type=float, required=True)
@@ -446,6 +447,7 @@ def main():
                         ad['carousel_material_list'] = json.loads(args.carousels_file.read_text())
                     item['ad'] = ad
                     if args.title:item['ad']['titles'] = args.title
+                    if args.cta:item['ad']['call_to_action_buttons'] = args.cta
                     if args.product_image_id:item['ad']['product_image_id']=args.product_image_id
                     if getattr(args,'landing_page',None):item['ad']['landing_page']=args.landing_page
                 if args.command == 'new-ad':item['project_id'] = resolve(read('inventory')['data'], args.project)['project_id']

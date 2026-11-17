@@ -132,12 +132,18 @@ def validate(op, args):
     if op == 'new_ad':ids([args['project_id']])
     if 'ad' in args:
         a = args['ad']
-        if not isinstance(a, dict) or set(a) - {'name', 'video_id', 'cover_id', 'titles', 'orientation', 'product_image_id', 'videos', 'image_material_list', 'carousel_material_list', 'landing_page'} or 'name' not in a:
+        if not isinstance(a, dict) or set(a) - {'name', 'video_id', 'cover_id', 'titles', 'orientation', 'product_image_id', 'videos', 'image_material_list', 'carousel_material_list', 'landing_page', 'call_to_action_buttons'} or 'name' not in a:
             raise ValueError('Ad requires a name and valid material fields.')
         text(a['name'])
         ad_materials(a)
         if 'product_image_id' in a:text(a['product_image_id'],256)
         if 'landing_page' in a:landing_url(a['landing_page'])
+        if 'call_to_action_buttons' in a:
+            buttons = a['call_to_action_buttons']
+            if (not isinstance(buttons, list) or not 1 <= len(buttons) <= 10
+                    or any(not isinstance(b, str) or not 2 <= len(b) <= 6
+                           or b != b.strip() or any(ord(c) < 32 or ord(c) == 127 for c in b) for b in buttons)):
+                raise ValueError('Provide 1–10 call_to_action_buttons of 2–6 characters each.')
         if 'titles' in a:
             if not isinstance(a['titles'], list) or not 1 <= len(a['titles']) <= 10:raise ValueError('Provide 1–10 titles.')
             for title in a['titles']:text(title, 55)

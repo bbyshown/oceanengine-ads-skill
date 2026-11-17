@@ -119,6 +119,8 @@ UBMAX 小游戏项目每个单元可传 1 至 30 条不同视频。普通项目�
 {"promotion_materials":{"product_info":{"selling_points":["每次升级都要取舍","怪物来袭守到最后","搭建自己的防守线"]}}}
 ```
 
+更新抖小广告时，`promotion_materials.video_material_list` 可一次提交 1–100 条视频。删除拒审视频时传入要保留的完整列表。查询 `capabilities.max_videos_per_ad_update` 可确认当前账户使用的网关限制，平台仍按账号和广告类型校验。
+
 `edit-ad`自动保留完整的其他可写素材字段并移除只读字段。不要直接提交缺少原标题/视频等必填信息的材料片段。
 
 ## 报表

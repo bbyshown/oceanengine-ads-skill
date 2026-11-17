@@ -92,6 +92,7 @@ def main():
             'gateway':cfg['base_url'].rstrip('/'),'script_path':str(Path(__file__).resolve()),
             'game_app_id':r.get('app_id'),'oauth_profile_id':r.get('profile_id'),
             'max_videos_per_ad':r.get('max_videos_per_ad', 1),
+            'max_videos_per_ad_update':r.get('max_videos_per_ad_update'),
             'ad_material_types':r.get('ad_material_types', ['video']),
             'max_video_upload_bytes':r.get('max_video_upload_bytes', 50 * 1024 * 1024),
             'project_roi_modes':r.get('project_roi_modes', []),

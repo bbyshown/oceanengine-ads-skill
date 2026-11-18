@@ -134,3 +134,12 @@ python3 "$S/scripts/report_ads.py" --account main --project V02 --date 2026-11-0
 
 
 默认查询列表最多展开 10 项，较深层结构和长文本会显示省略提示，完整数据保存到返回的 `details_file`。执行结果包含对象 ID、job_id、核验状态和 `receipt` 路径。使用 `--full-output` 可展开完整结果，上传 Base64 始终从终端输出中省略。该选项须放在子命令之前，例如 `ads.py --full-output creation-status 原creation_id` 或 `setup.py --full-output accounts`。上传恢复数据仍保存在本地原回执，不要把文件内容整体贴入对话。
+
+
+读取当前账户视频素材库：
+
+```bash
+python3 ads.py --account ACCOUNT --full-output video-materials --page 1 --page-size 100
+```
+
+调用 `2/file/video/get/`，按已授权账户读取，不依赖项目或广告关联。返回平台 `page_info`，使用 `--page` 继续读取。每条保留原始字段，并提供 `video_id`、`material_id`、`cover_id` 别名。平台未返回状态时，`status=null` 并用 `status_available=false` 表明缺失，不能据此认定审核通过。素材文件已从平台库删除时，以平台实际返回为准。

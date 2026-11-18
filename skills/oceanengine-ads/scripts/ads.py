@@ -286,6 +286,9 @@ def main():
     p=sub.add_parser('ubmax-pro-add-materials',help='Append videos to an existing UBMAX PRO project.')
     p.add_argument('--project-id', type=int, required=True)
     p.add_argument('--videos-file', type=Path, required=True)
+    p=sub.add_parser('video-materials',help='Read the account video material library independently of projects.')
+    p.add_argument('--page',type=int,default=1)
+    p.add_argument('--page-size',type=int,default=100)
     p=sub.add_parser('ubmax-pro-projects',help='Read projects from the UBMAX PRO standard project API.')
     p.add_argument('--with-materials',action='store_true',help='Read project details and a page of project_materials; requires --project-id.')
     p.add_argument('--project-id',type=int);p.add_argument('--page',type=int,default=1);p.add_argument('--page-size',type=int,default=20)
@@ -408,6 +411,12 @@ def main():
         if not args.run_id:
             raise ValueError('Append materials requires a stable --run-id.')
         show(execute_plan(plan, args.run_id), RUNS / args.run_id / 'result.json', args.full_output)
+        return
+    if args.command == 'video-materials':
+        if not 1 <= args.page <= 1000 or not 1 <= args.page_size <= 100:
+            raise ValueError('Use page 1–1000 and page-size 1–100.')
+        show(read('video_materials', {'page':args.page, 'page_size':args.page_size}),
+             ROOT / 'data/operations/latest-video-materials.json', args.full_output)
         return
     if args.command == 'ubmax-pro-projects':
         if args.account is None: raise ValueError('Select an explicit --account for UBMAX PRO.')

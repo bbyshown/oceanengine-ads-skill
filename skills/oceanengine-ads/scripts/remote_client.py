@@ -8,7 +8,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 
 import settings
 
-READS={'ubmax_pro_create_preview','ubmax_pro_promotions','ubmax_pro_projects','status','inventory','accounts','workbench','projects','promotions','avatar','game_links',
+READS={'video_materials','ubmax_pro_create_preview','ubmax_pro_promotions','ubmax_pro_projects','status','inventory','accounts','workbench','projects','promotions','avatar','game_links',
        'report_config','report','cover','aweme_auth','goals','deep_bid','account_preflight',
        'account_budget','account_profile','change_history','creation_status','discover_accounts','oauth_profile_status'}
 WRITES={'ubmax_pro_add_materials','ubmax_pro_new_project','ubmax_pro_delete_projects','new_project','new_ad','new_campaign','resume_creation','create_paused_ad','update_paused_ad',

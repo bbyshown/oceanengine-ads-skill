@@ -1,5 +1,9 @@
 # 更新记录
 
+## 1.3.27
+
+- 智擎创建支持 call_to_action_buttons 清单参数及模板默认值，传入 project_materials。按模板指定 AUTO/OFF 原生锚点策略。
+
 ## 1.3.26
 
 - 智擎创建 start_time/end_time 改为平台要求的 YYYY-MM-DD 日期格式，并处理十年后的闰日。

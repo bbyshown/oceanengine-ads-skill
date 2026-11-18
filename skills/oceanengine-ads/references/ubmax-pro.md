@@ -56,3 +56,5 @@ python3 ads.py --account ACCOUNT --dry-run ubmax-pro-new-project --args-file ubm
 查询来源项目详情可用 `ads.py --account ACCOUNT --full-output ubmax-pro-projects --project-id ID --with-materials`。返回项目级配置与 `project_materials` 素材页，保留平台分页信息并标记 `project_materials_paginated=true`，后续页用 `--page` 获取。必须先确认项目属于当前账号及登记游戏，才能读取素材。
 
 详情读取会同时请求 OTHER、TITLE、MINI_PROGRAM_INFO 类型，补齐产品信息、落地页、标题及小游戏链接，视频等主素材保留当前页和平台分页信息。
+
+智擎清单支持 `"call_to_action_buttons":["开始游戏","打开游戏"]`，每项 2–6 字，共 1–10 项。省略时使用本游戏模板行动号召。锚点策略取模板 native_setting.anchor_related_type（AUTO/OFF）。标准版的 dynamic_creative_switch、intelligent_generation 未出现在当前官方智擎 SDK 创建结构中，不自动套用。

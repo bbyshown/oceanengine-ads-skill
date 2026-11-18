@@ -16,7 +16,7 @@ IMMEDIATE_CONFIRM = 'accept_create_then_pause'
 def validate_creation(args, *, submit=False):
     if not isinstance(args, dict):
         raise ValueError('UBMAX PRO requires a flat JSON object.')
-    expected = FIELDS | {'product_info', 'landing_page', 'is_comment_disable'} | ({CONFIRM, IMMEDIATE_CONFIRM} if submit else set())
+    expected = FIELDS | {'product_info', 'landing_page', 'is_comment_disable', 'call_to_action_buttons'} | ({CONFIRM, IMMEDIATE_CONFIRM} if submit else set())
     missing = sorted(FIELDS - args.keys())
     unexpected = sorted(args.keys() - expected)
     if missing or unexpected:
@@ -39,6 +39,8 @@ def validate_creation(args, *, submit=False):
             raise ValueError('landing_page requires an HTTPS chengzijianzhan.com/tetris/page/<id> URL.')
     if 'is_comment_disable' in args and args['is_comment_disable'] not in ('ON', 'OFF'):
         raise ValueError('is_comment_disable must be ON or OFF.')
+    if 'call_to_action_buttons' in args:
+        validate_cta(args['call_to_action_buttons'])
     if 'product_info' in args:
         validate_product_info(args['product_info'])
     import math
@@ -78,3 +80,10 @@ def validate_product_info(product):
                 or any(not isinstance(value, str) or value != value.strip() or not value.isprintable()
                        or not minimum <= len(value) <= maximum for value in values)):
             raise ValueError(f'product_info.{key} requires 1–{limit} values of {minimum}–{maximum} characters.')
+
+
+def validate_cta(buttons):
+    if (not isinstance(buttons, list) or not 1 <= len(buttons) <= 10
+            or any(not isinstance(button, str) or button != button.strip()
+                   or not button.isprintable() or not 2 <= len(button) <= 6 for button in buttons)):
+        raise ValueError('call_to_action_buttons requires 1–10 texts of 2–6 characters.')

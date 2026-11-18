@@ -284,6 +284,7 @@ def main():
     p.add_argument('--args-file',type=Path,required=True);p.add_argument('--accept-scheduled-then-pause',action='store_true')
     p.add_argument('--accept-create-then-pause',action='store_true', help='Start the long-term schedule now and immediately request pause.')
     p=sub.add_parser('ubmax-pro-projects',help='Read projects from the UBMAX PRO standard project API.')
+    p.add_argument('--with-materials',action='store_true',help='Read project details and a page of project_materials; requires --project-id.')
     p.add_argument('--project-id',type=int);p.add_argument('--page',type=int,default=1);p.add_argument('--page-size',type=int,default=20)
     p=sub.add_parser('ubmax-pro-promotions',help='Read UBMAX PRO project materials.')
     p.add_argument('--project-id',type=int,required=True);p.add_argument('--page',type=int,default=1);p.add_argument('--page-size',type=int,default=20)
@@ -398,6 +399,7 @@ def main():
         if args.account is None: raise ValueError('Select an explicit --account for UBMAX PRO.')
         query={'page':args.page,'page_size':args.page_size}
         if args.project_id is not None:query['project_id']=args.project_id
+        if args.with_materials:query['include_materials']=True
         show(read('ubmax_pro_projects',query), ROOT / 'data/operations/latest-ubmax-pro-projects.json', args.full_output);return
     if args.command == 'capabilities':show(read('status'), ROOT / 'data/operations/latest-capabilities.json', args.full_output);return
     if args.command == 'preflight':show(read('account_preflight'), ROOT / 'data/operations/latest-preflight.json', args.full_output);return

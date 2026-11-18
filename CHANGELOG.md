@@ -1,5 +1,10 @@
 # 更新记录
 
+## 1.3.25
+
+- 智擎清单支持 landing_page 和 is_comment_disable，创建沿用游戏模板监测配置并自动核验转化资产。
+- ubmax-pro-projects --project-id ID --with-materials 同时读取项目配置及分页素材，支持复核来源项目参数。
+
 ## 1.3.24
 
 - 智擎创建支持 project_materials.product_info，清单可选 product_info 覆盖模板产品名、图片及卖点，缺失图片时在写入前报错。

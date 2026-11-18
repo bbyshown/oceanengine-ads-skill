@@ -49,3 +49,8 @@ python3 ads.py --account ACCOUNT --dry-run ubmax-pro-new-project --args-file ubm
 ```
 
 该片段并入六项创建参数所在对象。产品名 1 条、1–20 字，主图 1–10 个，卖点 1–10 条、每条 6–9 字。图片 ID 需来自目标账户可用素材，尺寸及素材权限由平台校验。预检检查产品信息结构与非空字段。
+
+
+落地页在创建清单中用 `landing_page` 指定审核可用的橙子建站 HTTPS 页面，写入 `project_materials.external_url_material_list`。不传时使用当前游戏配置的落地页。评论开关可传 `is_comment_disable`（ON/OFF，默认 ON）。`asset_id` 由网关核验当前账号和游戏的事件资产后填写，类型为单个整数。监测链接继承当前游戏模板的 `project.track_url_setting`。
+
+查询来源项目详情可用 `ads.py --account ACCOUNT --full-output ubmax-pro-projects --project-id ID --with-materials`。返回项目级配置与 `project_materials` 素材页，保留平台分页信息并标记 `project_materials_paginated=true`，后续页用 `--page` 获取。必须先确认项目属于当前账号及登记游戏，才能读取素材。

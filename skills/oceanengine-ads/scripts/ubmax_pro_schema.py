@@ -16,7 +16,7 @@ IMMEDIATE_CONFIRM = 'accept_create_then_pause'
 def validate_creation(args, *, submit=False):
     if not isinstance(args, dict):
         raise ValueError('UBMAX PRO requires a flat JSON object.')
-    expected = FIELDS | {'product_info'} | ({CONFIRM, IMMEDIATE_CONFIRM} if submit else set())
+    expected = FIELDS | {'product_info', 'landing_page', 'is_comment_disable'} | ({CONFIRM, IMMEDIATE_CONFIRM} if submit else set())
     missing = sorted(FIELDS - args.keys())
     unexpected = sorted(args.keys() - expected)
     if missing or unexpected:
@@ -28,6 +28,17 @@ def validate_creation(args, *, submit=False):
         confirmations = [args.get(key) is True for key in (CONFIRM, IMMEDIATE_CONFIRM)]
         if sum(confirmations) != 1 or any(key in args and args[key] is not True for key in (CONFIRM, IMMEDIATE_CONFIRM)):
             raise ValueError('Use exactly one confirmation: accept_create_then_pause=true for immediate long-term scheduling, or accept_scheduled_then_pause=true for legacy future scheduling.')
+    if 'landing_page' in args:
+        landing_page = args['landing_page']
+        from urllib.parse import urlsplit
+        uri = urlsplit(landing_page) if isinstance(landing_page, str) else None
+        if (not uri or uri.scheme != 'https' or uri.hostname != 'www.chengzijianzhan.com'
+                or uri.username or uri.password or uri.port is not None
+                or not __import__('re').fullmatch(r'/tetris/page/[0-9]{16,20}/?', uri.path)
+                or landing_page != landing_page.strip()):
+            raise ValueError('landing_page requires an HTTPS chengzijianzhan.com/tetris/page/<id> URL.')
+    if 'is_comment_disable' in args and args['is_comment_disable'] not in ('ON', 'OFF'):
+        raise ValueError('is_comment_disable must be ON or OFF.')
     if 'product_info' in args:
         validate_product_info(args['product_info'])
     import math

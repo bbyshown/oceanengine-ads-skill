@@ -30,3 +30,5 @@ python3 ads.py --account ACCOUNT --dry-run ubmax-pro-new-project --args-file ubm
 直接使用签名任务时，将六项放在 args 顶层，另加 account_id（整数）。预检 op=ubmax_pro_create_preview；正式 op=ubmax_pro_new_project，并额外提供 accept_create_then_pause=true。idempotency_key 在外层任务对象，不能用 creation_id 替代。确认字段仅用于正式提交，不写进 CLI JSON。
 
 智擎视频创建提交视频及标题素材，游戏调起链接用于预检核验。速玩素材需要平台素材库给出的 app_play_uri，不能由 sslocal 调起链接替代。预检默认立即排期，旧 --accept-scheduled-then-pause 会选择未来排期。要使提交与默认预检一致，使用 --accept-create-then-pause。
+
+智擎项目来源字段为 `project_materials.source`，由当前游戏模板的 `ad.source` 提供，预检会校验来源非空及长度。业务创建清单沿用六项参数。

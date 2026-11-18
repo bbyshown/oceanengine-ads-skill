@@ -58,3 +58,12 @@ python3 ads.py --account ACCOUNT --dry-run ubmax-pro-new-project --args-file ubm
 详情读取会同时请求 OTHER、TITLE、MINI_PROGRAM_INFO 类型，补齐产品信息、落地页、标题及小游戏链接，视频等主素材保留当前页和平台分页信息。
 
 智擎清单支持 `"call_to_action_buttons":["开始游戏","打开游戏"]`，每项 2–6 字，共 1–10 项。省略时使用本游戏模板行动号召。锚点策略取模板 native_setting.anchor_related_type（AUTO/OFF）。标准版的 dynamic_creative_switch、intelligent_generation 未出现在当前官方智擎 SDK 创建结构中，不自动套用。
+
+
+智擎创建的视频清单上限为 100 条，实际可创建数量由平台验证。给已有项目追加视频用：
+
+```bash
+python3 ads.py --account ACCOUNT --run-id append-unique-001 ubmax-pro-add-materials --project-id PROJECT_ID --videos-file /absolute/path/videos.json
+```
+
+视频文件为 `[{"video_id":"VIDEO_ID","video_cover_id":"COVER_ID"}]`。一次清单 1–100 条，以每批最多 30 条调用官方 `v3.0/oc_project/material/create/`。原有视频保持在项目内，已有视频 ID 跳过。回执列出追加前后视频数量，核对新视频及封面和原视频仍存在。部分成功或网络不确定时检查原 run-id 与素材库存，不重复提交同一清单。全局 `--dry-run` 可查看操作参数。

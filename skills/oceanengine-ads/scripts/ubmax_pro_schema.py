@@ -52,7 +52,7 @@ def validate_creation(args, *, submit=False):
         if type(v) not in (int,float) or not lo <= v <= hi or not math.isfinite(v) or round(v,2)!=v:
             raise ValueError(f'UBMAX PRO {k} must be numeric in {lo}-{hi}, with at most two decimals.')
     videos=args['videos']
-    if not isinstance(videos,list) or not 1<=len(videos)<=30:raise ValueError('Provide 1-30 videos with covers.')
+    if not isinstance(videos,list) or not 1<=len(videos)<=100:raise ValueError('Provide 1-100 videos with covers.')
     for video in videos:
         if not isinstance(video,dict) or set(video)!={'video_id','video_cover_id'} or any(
             not isinstance(v,str) or not 1<=len(v)<=256 or any(c.isspace() for c in v) for v in video.values()):
@@ -87,3 +87,13 @@ def validate_cta(buttons):
             or any(not isinstance(button, str) or button != button.strip()
                    or not button.isprintable() or not 2 <= len(button) <= 6 for button in buttons)):
         raise ValueError('call_to_action_buttons requires 1–10 texts of 2–6 characters.')
+
+
+def validate_append(args):
+    if (not isinstance(args, dict) or set(args) != {'project_id', 'videos'}
+            or type(args.get('project_id')) is not int or not 0 < args['project_id'] < 2**63):
+        raise ValueError('Append materials requires project_id and videos.')
+    validate_creation(dict(EXAMPLE, videos=args['videos']))
+    ids = [video['video_id'] for video in args['videos']]
+    if len(set(ids)) != len(ids):
+        raise ValueError('Append materials requires distinct video IDs.')

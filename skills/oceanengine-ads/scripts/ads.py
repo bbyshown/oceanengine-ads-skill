@@ -240,7 +240,7 @@ def execute_plan(plan, run_id, *, directory=RUNS, client=None):
         if row['status'] != 'done' or result.get('code', 0) != 0:
             raise RuntimeError('Operation stopped; inspect ' + str(path) + ' before any new write.')
         if step.get('checks'):verify_inventory(result['data'], step['checks'])
-        if step['op'].startswith(('set_', 'delete_', 'new_')) or step['op'] in ('update_ad', 'resume_creation', 'register_account', 'ubmax_pro_delete_projects', 'ubmax_pro_new_project'):
+        if step['op'].startswith(('set_', 'delete_', 'new_')) or step['op'] in ('update_ad', 'resume_creation', 'register_account', 'ubmax_pro_delete_projects', 'ubmax_pro_new_project', 'ubmax_pro_add_materials'):
             if not (result.get('data') or {}).get('verified'):raise RuntimeError('Write lacks verified readback; stop.')
         entry['verified'] = True;save(path, receipt)
     receipt['status'] = 'done';save(path, receipt)
@@ -283,6 +283,9 @@ def main():
     p=sub.add_parser('ubmax-pro-new-project',help='Preview or explicitly opt into future-scheduled UBMAX PRO creation followed by pause.')
     p.add_argument('--args-file',type=Path,required=True);p.add_argument('--accept-scheduled-then-pause',action='store_true')
     p.add_argument('--accept-create-then-pause',action='store_true', help='Start the long-term schedule now and immediately request pause.')
+    p=sub.add_parser('ubmax-pro-add-materials',help='Append videos to an existing UBMAX PRO project.')
+    p.add_argument('--project-id', type=int, required=True)
+    p.add_argument('--videos-file', type=Path, required=True)
     p=sub.add_parser('ubmax-pro-projects',help='Read projects from the UBMAX PRO standard project API.')
     p.add_argument('--with-materials',action='store_true',help='Read project details and a page of project_materials; requires --project-id.')
     p.add_argument('--project-id',type=int);p.add_argument('--page',type=int,default=1);p.add_argument('--page-size',type=int,default=20)
@@ -395,6 +398,17 @@ def main():
         if args.account is None:raise ValueError('Select an explicit --account for UBMAX PRO.')
         show(read('ubmax_pro_promotions',{'project_id':args.project_id,'page':args.page,'page_size':args.page_size}),
              ROOT / 'data/operations/latest-ubmax-pro-promotions.json',args.full_output);return
+    if args.command == 'ubmax-pro-add-materials':
+        payload = {'project_id': args.project_id, 'videos': json.loads(args.videos_file.read_text())}
+        ubmax_pro_schema.validate_append(payload)
+        plan = {'action': 'ubmax_pro_add_materials', 'steps': [{'op': 'ubmax_pro_add_materials', 'args': payload}]}
+        if args.dry_run:
+            print(json.dumps(plan, ensure_ascii=False, indent=2))
+            return
+        if not args.run_id:
+            raise ValueError('Append materials requires a stable --run-id.')
+        show(execute_plan(plan, args.run_id), RUNS / args.run_id / 'result.json', args.full_output)
+        return
     if args.command == 'ubmax-pro-projects':
         if args.account is None: raise ValueError('Select an explicit --account for UBMAX PRO.')
         query={'page':args.page,'page_size':args.page_size}

@@ -75,3 +75,5 @@ description: 通过已授权的巨量引擎管理网关操作小游戏广告，�
 签名操作分别为 `ubmax_pro_promotions`（account_id、project_id、可选 page 与 page_size）与 `ubmax_pro_delete_projects`（account_id、project_ids、confirm_delete=true）。创建使用独立 `ubmax-pro-new-project --args-file JSON`。JSON 只含 `name,budget,roi,roi_mode,videos,titles`；roi_mode 为 7d 或 30d，videos 每项含 video_id/video_cover_id，titles 是项目共享池，不支持每条视频独立手写文案。留用已登记游戏的审核通过调起链接和模板落地页。先使用全局 `--dry-run`，该模式仅做线上只读资产及调起链接核验和生成请求。
 
 智擎预检使用 NORMAL / PROCEDURAL、立即开始及十年长期排期。实际提交需要用户确认账户、游戏、预算、ROI、素材、标题及创建后暂停行为，使用全局 `--run-id` 和子命令 `--accept-create-then-pause`。平台分两次请求完成创建和暂停，期间可能开始投放。旧 `--accept-scheduled-then-pause` 保留未来 14 日开始、15 日结束的兼容行为。平台忽略排期、暂停失败或创建返回超时均有风险；发生不确定时按原任务、项目名和排期在后台核对，禁止用新项目名重建，必要时在开始日前人工暂停。建投回执仅核验项目状态及关键设置，素材另用查询核对。未提供独立“暂停新增单元”接口；初始共享素材随项目一次提交。
+
+智擎创建支持最多100条视频清单，实际平台限额以响应为准。已有智擎项目追加视频用 `ubmax-pro-add-materials --project-id ID --videos-file PATH`，配全局 `--account`、稳定 `--run-id`。按操作参考核对追加前后视频数及部分成功回执。

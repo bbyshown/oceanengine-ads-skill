@@ -32,3 +32,5 @@ python3 ads.py --account ACCOUNT --dry-run ubmax-pro-new-project --args-file ubm
 智擎视频创建提交视频及标题素材，游戏调起链接用于预检核验。速玩素材需要平台素材库给出的 app_play_uri，不能由 sslocal 调起链接替代。预检默认立即排期，旧 --accept-scheduled-then-pause 会选择未来排期。要使提交与默认预检一致，使用 --accept-create-then-pause。
 
 智擎项目来源字段为 `project_materials.source`，由当前游戏模板的 `ad.source` 提供，预检会校验来源非空及长度。业务创建清单沿用六项参数。
+
+小游戏调起信息通过 `project_materials.mini_program_info.app_id/url` 提交，取自当前登记游戏及其审核模板。预检和创建使用同一链接，并核对实例审核状态。

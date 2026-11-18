@@ -1,5 +1,9 @@
 # 更新记录
 
+## 1.3.23
+
+- 智擎创建补入 project_materials.mini_program_info，传递登记游戏的 app_id 和已审核调起链接。
+
 ## 1.3.22
 
 - 智擎创建按官方 SDK 结构传入 project_materials.source，复用游戏模板来源并在创建前校验。

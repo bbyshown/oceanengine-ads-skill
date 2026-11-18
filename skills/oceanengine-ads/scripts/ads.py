@@ -240,7 +240,7 @@ def execute_plan(plan, run_id, *, directory=RUNS, client=None):
         if row['status'] != 'done' or result.get('code', 0) != 0:
             raise RuntimeError('Operation stopped; inspect ' + str(path) + ' before any new write.')
         if step.get('checks'):verify_inventory(result['data'], step['checks'])
-        if step['op'].startswith(('set_', 'delete_', 'new_')) or step['op'] in ('update_ad', 'resume_creation', 'register_account', 'ubmax_pro_delete_projects', 'ubmax_pro_new_project', 'ubmax_pro_add_materials'):
+        if step['op'].startswith(('set_', 'delete_', 'new_')) or step['op'] in ('update_ad', 'resume_creation', 'register_account', 'ubmax_pro_delete_projects', 'ubmax_pro_new_project', 'ubmax_pro_add_materials', 'ubmax_pro_set_project_status'):
             if not (result.get('data') or {}).get('verified'):raise RuntimeError('Write lacks verified readback; stop.')
         entry['verified'] = True;save(path, receipt)
     receipt['status'] = 'done';save(path, receipt)
@@ -289,6 +289,9 @@ def main():
     p=sub.add_parser('video-materials',help='Read the account video material library independently of projects.')
     p.add_argument('--page',type=int,default=1)
     p.add_argument('--page-size',type=int,default=100)
+    p=sub.add_parser('ubmax-pro-status',help='Enable or pause explicitly selected UBMAX PRO projects.')
+    p.add_argument('project_ids',type=int,nargs='+')
+    p.add_argument('--status',choices=['ENABLE','DISABLE'],required=True)
     p=sub.add_parser('ubmax-pro-projects',help='Read projects from the UBMAX PRO standard project API.')
     p.add_argument('--with-materials',action='store_true',help='Read project details and a page of project_materials; requires --project-id.')
     p.add_argument('--project-id',type=int);p.add_argument('--page',type=int,default=1);p.add_argument('--page-size',type=int,default=20)
@@ -417,6 +420,20 @@ def main():
             raise ValueError('Use page 1–1000 and page-size 1–100.')
         show(read('video_materials', {'page':args.page, 'page_size':args.page_size}),
              ROOT / 'data/operations/latest-video-materials.json', args.full_output)
+        return
+    if args.command == 'ubmax-pro-status':
+        ids = args.project_ids
+        if (not 1 <= len(ids) <= 20 or len(set(ids)) != len(ids)
+                or any(not 0 < i < 2**63 for i in ids)):
+            raise ValueError('Select 1–20 distinct project IDs.')
+        plan = {'action': 'ubmax_pro_set_project_status', 'steps': [{
+            'op': 'ubmax_pro_set_project_status', 'args': {'project_ids': ids, 'opt_status': args.status}}]}
+        if args.dry_run:
+            print(json.dumps(plan,ensure_ascii=False,indent=2))
+            return
+        if not args.run_id:
+            raise ValueError('Project status updates require a stable --run-id.')
+        show(execute_plan(plan,args.run_id), RUNS / args.run_id / 'result.json', args.full_output)
         return
     if args.command == 'ubmax-pro-projects':
         if args.account is None: raise ValueError('Select an explicit --account for UBMAX PRO.')

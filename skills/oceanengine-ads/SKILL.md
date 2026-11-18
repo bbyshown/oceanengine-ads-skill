@@ -79,3 +79,5 @@ description: 通过已授权的巨量引擎管理网关操作小游戏广告，�
 智擎创建支持最多100条视频清单，实际平台限额以响应为准。已有智擎项目追加视频用 `ubmax-pro-add-materials --project-id ID --videos-file PATH`，配全局 `--account`、稳定 `--run-id`。按操作参考核对追加前后视频数及部分成功回执。
 
 查找可复用视频素材时用 `video-materials --page 1 --page-size 100` 读取账户素材库，带全局 `--account`。平台状态缺失返回null，按page_info分页读取。
+
+智擎项目启用/暂停用 `ubmax-pro-status PROJECT_ID --status ENABLE|DISABLE`，明确账户及目标，带稳定run-id。回读opt_status一致后才报告完成。

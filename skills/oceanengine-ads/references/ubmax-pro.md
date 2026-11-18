@@ -67,3 +67,15 @@ python3 ads.py --account ACCOUNT --run-id append-unique-001 ubmax-pro-add-materi
 ```
 
 视频文件为 `[{"video_id":"VIDEO_ID","video_cover_id":"COVER_ID"}]`。一次清单 1–100 条，以每批最多 30 条调用官方 `v3.0/oc_project/material/create/`。原有视频保持在项目内，已有视频 ID 跳过。回执列出追加前后视频数量，核对新视频及封面和原视频仍存在。部分成功或网络不确定时检查原 run-id 与素材库存，不重复提交同一清单。全局 `--dry-run` 可查看操作参数。
+
+
+智擎项目启停用：
+
+```bash
+python3 ads.py --account ACCOUNT --run-id status-unique-001 ubmax-pro-status PROJECT_ID --status ENABLE
+python3 ads.py --account ACCOUNT --run-id status-unique-002 ubmax-pro-status PROJECT_ID --status DISABLE
+```
+
+支持 1–20 个明确项目 ID，先核验全部目标账号与游戏归属，再写入并逐一回读。全局 `--dry-run` 可预览。已经达到目标状态时直接返回验证结果，网络不确定时查原任务。
+
+当前官方 SDK 的智擎素材状态接口支持 ENABLE/DISABLE，未列出删除枚举。需要移除特定视频时须另核实平台素材删除接口及适用范围。

@@ -16,7 +16,7 @@ IMMEDIATE_CONFIRM = 'accept_create_then_pause'
 def validate_creation(args, *, submit=False):
     if not isinstance(args, dict):
         raise ValueError('UBMAX PRO requires a flat JSON object.')
-    expected = FIELDS | ({CONFIRM, IMMEDIATE_CONFIRM} if submit else set())
+    expected = FIELDS | {'product_info'} | ({CONFIRM, IMMEDIATE_CONFIRM} if submit else set())
     missing = sorted(FIELDS - args.keys())
     unexpected = sorted(args.keys() - expected)
     if missing or unexpected:
@@ -28,6 +28,8 @@ def validate_creation(args, *, submit=False):
         confirmations = [args.get(key) is True for key in (CONFIRM, IMMEDIATE_CONFIRM)]
         if sum(confirmations) != 1 or any(key in args and args[key] is not True for key in (CONFIRM, IMMEDIATE_CONFIRM)):
             raise ValueError('Use exactly one confirmation: accept_create_then_pause=true for immediate long-term scheduling, or accept_scheduled_then_pause=true for legacy future scheduling.')
+    if 'product_info' in args:
+        validate_product_info(args['product_info'])
     import math
     if not isinstance(args['name'],str) or not 1 <= len(args['name'].strip()) <= 80 or args['name'] != args['name'].strip() or not args['name'].isprintable():
         raise ValueError('Specify a project name of 1-80 characters.')
@@ -46,3 +48,22 @@ def validate_creation(args, *, submit=False):
     if not isinstance(titles,list) or not 1<=len(titles)<=30 or any(
         not isinstance(t,str) or not 10<=sum(1 if c.isascii() else 2 for c in t.strip())<=110 for t in titles):
         raise ValueError('Provide 1-30 shared project titles, each 5-55 characters.')
+
+
+def validate_product_info(product):
+    fields = {'titles', 'image_ids', 'selling_points', 'product_name_type',
+              'product_image_type', 'product_selling_point_type'}
+    if (not isinstance(product, dict) or set(product) - fields
+            or not {'titles', 'image_ids', 'selling_points'} <= set(product)):
+        raise ValueError('product_info requires titles, image_ids and selling_points.')
+    for key in ('product_name_type', 'product_image_type', 'product_selling_point_type'):
+        if key in product and product[key] != 'CUSTOM':
+            raise ValueError('Explicit product_info supports CUSTOM product fields.')
+    for key, limit, minimum, maximum in (('titles', 1, 1, 20),
+                                         ('image_ids', 10, 1, 256),
+                                         ('selling_points', 10, 6, 9)):
+        values = product[key]
+        if (not isinstance(values, list) or not 1 <= len(values) <= limit
+                or any(not isinstance(value, str) or value != value.strip() or not value.isprintable()
+                       or not minimum <= len(value) <= maximum for value in values)):
+            raise ValueError(f'product_info.{key} requires 1–{limit} values of {minimum}–{maximum} characters.')

@@ -34,3 +34,18 @@ python3 ads.py --account ACCOUNT --dry-run ubmax-pro-new-project --args-file ubm
 智擎项目来源字段为 `project_materials.source`，由当前游戏模板的 `ad.source` 提供，预检会校验来源非空及长度。业务创建清单沿用六项参数。
 
 小游戏调起信息通过 `project_materials.mini_program_info.app_id/url` 提交，取自当前登记游戏及其审核模板。预检和创建使用同一链接，并核对实例审核状态。
+
+
+创建清单支持可选 `product_info`，传入时覆盖模板产品信息。模板缺少主图或内容不适合当前游戏时，在清单中明确填写。
+
+```json
+{
+  "product_info": {
+    "titles": ["我独自捉妖"],
+    "image_ids": ["REPLACE_TARGET_ACCOUNT_PRODUCT_IMAGE_ID"],
+    "selling_points": ["REPLACE_PRODUCT_SELLING_POINT"]
+  }
+}
+```
+
+该片段并入六项创建参数所在对象。产品名 1 条、1–20 字，主图 1–10 个，卖点 1–10 条、每条 6–9 字。图片 ID 需来自目标账户可用素材，尺寸及素材权限由平台校验。预检检查产品信息结构与非空字段。

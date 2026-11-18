@@ -1,5 +1,9 @@
 # 更新记录
 
+## 1.3.24
+
+- 智擎创建支持 project_materials.product_info，清单可选 product_info 覆盖模板产品名、图片及卖点，缺失图片时在写入前报错。
+
 ## 1.3.23
 
 - 智擎创建补入 project_materials.mini_program_info，传递登记游戏的 app_id 和已审核调起链接。

@@ -10,12 +10,13 @@ EXAMPLE = {
 }
 FIELDS = frozenset(EXAMPLE)
 CONFIRM = 'accept_scheduled_then_pause'
+IMMEDIATE_CONFIRM = 'accept_create_then_pause'
 
 
 def validate_creation(args, *, submit=False):
     if not isinstance(args, dict):
         raise ValueError('UBMAX PRO requires a flat JSON object.')
-    expected = FIELDS | ({CONFIRM} if submit else set())
+    expected = FIELDS | ({CONFIRM, IMMEDIATE_CONFIRM} if submit else set())
     missing = sorted(FIELDS - args.keys())
     unexpected = sorted(args.keys() - expected)
     if missing or unexpected:
@@ -23,8 +24,10 @@ def validate_creation(args, *, submit=False):
             ['unexpected: ' + ', '.join(unexpected)] if unexpected else [])
         raise ValueError('UBMAX PRO requires a flat creation JSON; ' + '; '.join(details)
                          + '. See ubmax-pro-schema.')
-    if submit and args.get(CONFIRM) is not True:
-        raise ValueError('UBMAX PRO write requires accept_scheduled_then_pause=true; use --accept-scheduled-then-pause.')
+    if submit:
+        confirmations = [args.get(key) is True for key in (CONFIRM, IMMEDIATE_CONFIRM)]
+        if sum(confirmations) != 1 or any(key in args and args[key] is not True for key in (CONFIRM, IMMEDIATE_CONFIRM)):
+            raise ValueError('Use exactly one confirmation: accept_create_then_pause=true for immediate long-term scheduling, or accept_scheduled_then_pause=true for legacy future scheduling.')
     import math
     if not isinstance(args['name'],str) or not 1 <= len(args['name'].strip()) <= 80 or args['name'] != args['name'].strip() or not args['name'].isprintable():
         raise ValueError('Specify a project name of 1-80 characters.')

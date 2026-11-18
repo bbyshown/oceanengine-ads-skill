@@ -25,6 +25,6 @@ python3 ads.py ubmax-pro-schema > ubmax-pro.json
 python3 ads.py --account ACCOUNT --dry-run ubmax-pro-new-project --args-file ubmax-pro.json
 ```
 
-预检会核验账户、游戏事件资产、审核通过的调起链接；不会写广告，也不证明平台接受真实创建。用户明确同意未来排期后立即暂停，且确认实际素材与预算后，才去掉全局 --dry-run，加全局 --run-id 和子命令 --accept-scheduled-then-pause。仅在回读 DISABLE 且关键配置一致时报告成功；不确定时核对原任务，禁止直接重建或删除原项目。
+预检会核验账户、游戏事件资产、审核通过的调起链接；不会写广告，也不证明平台接受真实创建。预检默认使用 delivery_type=NORMAL、delivery_mode=PROCEDURAL、schedule_type=SCHEDULE_FROM_NOW，开始时间为北京时间当前时间，结束时间为十年后。确认实际素材、预算和立即排期后暂停的行为后，去掉全局 --dry-run，加全局 --run-id 和子命令 --accept-create-then-pause。该流程先创建再请求暂停，两次平台请求之间可能开始投放。旧 --accept-scheduled-then-pause 继续使用未来 14 天开始、15 天结束的排期。仅在回读 DISABLE 且关键配置一致时报告成功；不确定时核对原任务，禁止直接重建或删除原项目。
 
-直接使用签名任务时，将六项放在 args 顶层，另加 account_id（整数）。预检 op=ubmax_pro_create_preview；正式 op=ubmax_pro_new_project，并额外提供 accept_scheduled_then_pause=true。idempotency_key 在外层任务对象，不能用 creation_id 替代。确认字段仅用于正式提交，不写进 CLI JSON。
+直接使用签名任务时，将六项放在 args 顶层，另加 account_id（整数）。预检 op=ubmax_pro_create_preview；正式 op=ubmax_pro_new_project，并额外提供 accept_create_then_pause=true。idempotency_key 在外层任务对象，不能用 creation_id 替代。确认字段仅用于正式提交，不写进 CLI JSON。

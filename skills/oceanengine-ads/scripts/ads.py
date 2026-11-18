@@ -282,6 +282,7 @@ def main():
     sub.add_parser('ubmax-pro-schema',help='Print a fillable UBMAX PRO creation JSON example without connecting.')
     p=sub.add_parser('ubmax-pro-new-project',help='Preview or explicitly opt into future-scheduled UBMAX PRO creation followed by pause.')
     p.add_argument('--args-file',type=Path,required=True);p.add_argument('--accept-scheduled-then-pause',action='store_true')
+    p.add_argument('--accept-create-then-pause',action='store_true', help='Start the long-term schedule now and immediately request pause.')
     p=sub.add_parser('ubmax-pro-projects',help='Read projects from the UBMAX PRO standard project API.')
     p.add_argument('--project-id',type=int);p.add_argument('--page',type=int,default=1);p.add_argument('--page-size',type=int,default=20)
     p=sub.add_parser('ubmax-pro-promotions',help='Read UBMAX PRO project materials.')
@@ -375,10 +376,11 @@ def main():
         if args.dry_run:
             show(read('ubmax_pro_create_preview',payload,client=selected_client),
                  ROOT / 'data/operations/latest-ubmax-pro-create-preview.json',args.full_output);return
-        if not args.accept_scheduled_then_pause or not args.run_id:
-            raise ValueError('Use --dry-run first, then explicit --accept-scheduled-then-pause and a stable --run-id.')
+        if (args.accept_scheduled_then_pause == args.accept_create_then_pause) or not args.run_id:
+            raise ValueError('Use one explicit --accept-create-then-pause or --accept-scheduled-then-pause, and a stable --run-id.')
+        confirmation = 'accept_create_then_pause' if args.accept_create_then_pause else 'accept_scheduled_then_pause'
         plan={'action':'ubmax_pro_new_project','steps':[{'op':'ubmax_pro_new_project',
-            'args':dict(payload,accept_scheduled_then_pause=True)}]}
+            'args':dict(payload,**{confirmation:True})}]}
         show(execute_plan(plan,args.run_id,client=selected_client),RUNS / args.run_id / 'result.json',args.full_output);return
     if args.command == 'ubmax-pro-delete-projects':
         if args.account is None:raise ValueError('Select an explicit --account for UBMAX PRO.')

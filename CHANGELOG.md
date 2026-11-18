@@ -1,5 +1,9 @@
 # 更新记录
 
+## 1.3.26
+
+- 智擎创建 start_time/end_time 改为平台要求的 YYYY-MM-DD 日期格式，并处理十年后的闰日。
+
 ## 1.3.25
 
 - 智擎清单支持 landing_page 和 is_comment_disable，创建沿用游戏模板监测配置并自动核验转化资产。

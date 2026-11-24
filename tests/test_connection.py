@@ -123,6 +123,7 @@ class OperationWhitelistTests(unittest.TestCase):
     def test_adoption_operation_is_sendable(self):
         import remote_client
         self.assertIn('claim_projects', remote_client.WRITES)
+        self.assertIn('set_material_status', remote_client.WRITES)
         self.assertIn('ubmax_pro_set_project_status', remote_client.WRITES)
         self.assertIn('video_materials', remote_client.READS)
         self.assertNotIn('video_materials', remote_client.WRITES)

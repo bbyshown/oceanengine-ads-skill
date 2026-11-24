@@ -143,3 +143,12 @@ python3 ads.py --account ACCOUNT --full-output video-materials --page 1 --page-s
 ```
 
 调用 `2/file/video/get/`，按已授权账户读取，不依赖项目或广告关联。返回平台 `page_info`，使用 `--page` 继续读取。每条保留原始字段，并提供 `video_id`、`material_id`、`cover_id` 别名。平台未返回状态时，`status=null` 并用 `status_available=false` 表明缺失，不能据此认定审核通过。素材文件已从平台库删除时，以平台实际返回为准。
+
+
+暂停标准广告中的指定视频素材：
+
+```bash
+python3 ads.py --account ACCOUNT --run-id material-pause-unique-001 material-status PROMOTION_ID --material-ids MATERIAL_ID --status DISABLE
+```
+
+使用广告实时素材列表里的 `material_id`，一次可传1–20个。网关确认广告属于当前账号/游戏、素材在该广告视频列表内，再调用官方 `v3.0/material/status/update/`。逐项回读 `material_opt_status`，并确认广告开关。恢复素材用 `--status ENABLE`。支持全局 `--dry-run`。状态不一致或部分失败时查看原任务，复用原run-id查询，勿反复编辑广告触发重审。

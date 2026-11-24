@@ -81,3 +81,5 @@ description: 通过已授权的巨量引擎管理网关操作小游戏广告，�
 查找可复用视频素材时用 `video-materials --page 1 --page-size 100` 读取账户素材库，带全局 `--account`。平台状态缺失返回null，按page_info分页读取。
 
 智擎项目启用/暂停用 `ubmax-pro-status PROJECT_ID --status ENABLE|DISABLE`，明确账户及目标，带稳定run-id。回读opt_status一致后才报告完成。
+
+暂停标准广告中的视频素材用 `material-status PROMOTION_ID --material-ids MID --status DISABLE`，配全局账户与稳定run-id。使用广告内material_id，不向update_ad.video_material_list塞material_opt_status。

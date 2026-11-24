@@ -292,6 +292,10 @@ def main():
     p=sub.add_parser('ubmax-pro-status',help='Enable or pause explicitly selected UBMAX PRO projects.')
     p.add_argument('project_ids',type=int,nargs='+')
     p.add_argument('--status',choices=['ENABLE','DISABLE'],required=True)
+    p=sub.add_parser('material-status',help='Enable or pause selected video materials within a standard promotion.')
+    p.add_argument('promotion_id',type=int)
+    p.add_argument('--material-ids',type=int,nargs='+',required=True)
+    p.add_argument('--status',choices=['ENABLE','DISABLE'],required=True)
     p=sub.add_parser('ubmax-pro-projects',help='Read projects from the UBMAX PRO standard project API.')
     p.add_argument('--with-materials',action='store_true',help='Read project details and a page of project_materials; requires --project-id.')
     p.add_argument('--project-id',type=int);p.add_argument('--page',type=int,default=1);p.add_argument('--page-size',type=int,default=20)
@@ -433,6 +437,20 @@ def main():
             return
         if not args.run_id:
             raise ValueError('Project status updates require a stable --run-id.')
+        show(execute_plan(plan,args.run_id), RUNS / args.run_id / 'result.json', args.full_output)
+        return
+    if args.command == 'material-status':
+        ids = args.material_ids
+        if (not 0 < args.promotion_id < 2**63 or not 1 <= len(ids) <= 20
+                or len(set(ids)) != len(ids) or any(not 0 < i < 2**63 for i in ids)):
+            raise ValueError('Use a promotion ID and 1–20 distinct material IDs.')
+        plan = {'action': 'set_material_status', 'steps': [{'op': 'set_material_status',
+                'args': {'promotion_id': args.promotion_id, 'material_ids': ids, 'opt_status': args.status}}]}
+        if args.dry_run:
+            print(json.dumps(plan,ensure_ascii=False,indent=2))
+            return
+        if not args.run_id:
+            raise ValueError('Material status updates require a stable --run-id.')
         show(execute_plan(plan,args.run_id), RUNS / args.run_id / 'result.json', args.full_output)
         return
     if args.command == 'ubmax-pro-projects':

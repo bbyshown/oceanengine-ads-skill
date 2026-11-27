@@ -61,6 +61,36 @@ def read(op, args=None, client=None):
     return r
 
 
+def aweme_comment_accounts(aweme_id, query, account_ids):
+    """Read each locally configured advertiser that currently authorizes one Aweme."""
+    results=[]
+    for account_id in account_ids:
+        client=SelectedClient(account_id)
+        try:
+            page=1;pages=1;authorized=False
+            while page<=pages and page<=100:
+                response=read('aweme_auth',{'page':page,'page_size':100},client=client)
+                data=response.get('data') or {}
+                rows=data.get('list')
+                if not isinstance(rows,list):raise ValueError('Aweme authorization response is missing list.')
+                authorized |= any(isinstance(row,dict) and row.get('aweme_id')==aweme_id
+                                 and row.get('auth_status')=='AUTHORIZED' for row in rows)
+                info=data.get('page_info') or {}
+                pages=info.get('total_page',page)
+                if type(pages) is not int or pages<0 or (rows and pages<page):raise ValueError('Aweme authorization pagination is invalid.')
+                if pages==0:break
+                page+=1
+            if not authorized:
+                results.append({'advertiser_id':account_id,'status':'skipped','reason':'aweme_not_authorized'})
+                continue
+            comments=read('aweme_comment_list',dict(query,aweme_id=aweme_id),client=client)
+            results.append({'advertiser_id':account_id,'status':'read','data':comments.get('data',{})})
+        except Exception as error:
+            results.append({'advertiser_id':account_id,'status':'error','message':str(error)[:500]})
+    return {'code':0,'data':{'aweme_id':aweme_id,'scope':'configured_authorized_advertisers',
+                            'advertiser_count':len(account_ids),'accounts':results}}
+
+
 def resolve(inventory, ref):
     rows = inventory['projects']
     text = str(ref).upper()
@@ -240,6 +270,9 @@ def execute_plan(plan, run_id, *, directory=RUNS, client=None):
         if row['status'] != 'done' or result.get('code', 0) != 0:
             raise RuntimeError('Operation stopped; inspect ' + str(path) + ' before any new write.')
         if step.get('checks'):verify_inventory(result['data'], step['checks'])
+        if step['op'] in ('aweme_comment_hide','aweme_comment_reply','aweme_comment_top'):
+            if not (result.get('data') or {}).get('accepted'):raise RuntimeError('Comment change was not acknowledged; inspect the original job before retrying.')
+            entry['accepted']=True;entry['verified']=False;save(path,receipt);continue
         if step['op'].startswith(('set_', 'delete_', 'new_')) or step['op'] in ('update_ad', 'resume_creation', 'register_account', 'ubmax_pro_delete_projects', 'ubmax_pro_new_project', 'ubmax_pro_add_materials', 'ubmax_pro_set_project_status'):
             if not (result.get('data') or {}).get('verified'):raise RuntimeError('Write lacks verified readback; stop.')
         entry['verified'] = True;save(path, receipt)
@@ -296,6 +329,21 @@ def main():
     p.add_argument('promotion_id',type=int)
     p.add_argument('--material-ids',type=int,nargs='+',required=True)
     p.add_argument('--status',choices=['ENABLE','DISABLE'],required=True)
+    p=sub.add_parser('aweme-comments',help='Read comments for one authorized Douyin account from one advertiser or all configured advertisers.')
+    p.add_argument('--aweme-id',required=True)
+    p.add_argument('--start-date',required=True,help='YYYY-MM-DD; at most a three-month range.')
+    p.add_argument('--end-date',required=True,help='YYYY-MM-DD.')
+    p.add_argument('--ad-id',type=int);p.add_argument('--item-id',type=int)
+    p.add_argument('--page',type=int,default=1);p.add_argument('--page-size',type=int,default=10)
+    p.add_argument('--all-configured-accounts',action='store_true',help='Aggregate only configured advertisers that currently authorize this aweme_id.')
+    p=sub.add_parser('aweme-comment-hide',help='Hide comments on an explicitly selected advertiser; this is not permanent deletion.')
+    p.add_argument('--aweme-id',required=True);p.add_argument('--comment-ids',type=int,nargs='+',required=True)
+    p.add_argument('--confirm-hide',action='store_true',help='Confirm hiding these exact comments.')
+    p=sub.add_parser('aweme-comment-reply',help='Reply to one comment on the selected advertiser.')
+    p.add_argument('--aweme-id',required=True);p.add_argument('--comment-id',type=int,required=True);p.add_argument('--text',required=True)
+    p=sub.add_parser('aweme-comment-top',help='Pin or unpin one comment on the selected advertiser.')
+    p.add_argument('--aweme-id',required=True);p.add_argument('--comment-id',type=int,required=True)
+    action=p.add_mutually_exclusive_group(required=True);action.add_argument('--top',dest='top',action='store_true');action.add_argument('--unpin',dest='top',action='store_false')
     p=sub.add_parser('ubmax-pro-projects',help='Read projects from the UBMAX PRO standard project API.')
     p.add_argument('--with-materials',action='store_true',help='Read project details and a page of project_materials; requires --project-id.')
     p.add_argument('--project-id',type=int);p.add_argument('--page',type=int,default=1);p.add_argument('--page-size',type=int,default=20)
@@ -425,6 +473,33 @@ def main():
         show(read('video_materials', {'page':args.page, 'page_size':args.page_size}),
              ROOT / 'data/operations/latest-video-materials.json', args.full_output)
         return
+    if args.command == 'aweme-comments':
+        if not args.account and not args.all_configured_accounts:
+            raise ValueError('Choose --account or --all-configured-accounts explicitly.')
+        query={'start_time':args.start_date,'end_time':args.end_date,'page':args.page,'page_size':args.page_size}
+        if args.ad_id is not None:query['ad_id']=args.ad_id
+        if args.item_id is not None:query['item_id']=args.item_id
+        if args.all_configured_accounts:
+            account_ids=sorted(set(settings.accounts(settings.load()).values()))
+            result=aweme_comment_accounts(args.aweme_id,query,account_ids)
+        else:
+            result=read('aweme_comment_list',dict(query,aweme_id=args.aweme_id))
+        show(result,ROOT/'data/operations/latest-aweme-comments.json',args.full_output);return
+    if args.command in ('aweme-comment-hide','aweme-comment-reply','aweme-comment-top'):
+        if args.account is None:raise ValueError('Select an explicit --account for a comment change.')
+        if args.command=='aweme-comment-hide' and not args.dry_run and not args.confirm_hide:
+            raise ValueError('Use --confirm-hide to confirm these exact comment IDs; the platform hides rather than deletes comments.')
+        if not args.dry_run and not args.run_id:raise ValueError('Comment changes require a stable --run-id.')
+        if args.command=='aweme-comment-hide':
+            op='aweme_comment_hide';payload={'aweme_id':args.aweme_id,'comment_ids':args.comment_ids,'confirm_hide':args.confirm_hide}
+        elif args.command=='aweme-comment-reply':
+            op='aweme_comment_reply';payload={'aweme_id':args.aweme_id,'comment_id':args.comment_id,'text':args.text}
+        else:
+            op='aweme_comment_top';payload={'aweme_id':args.aweme_id,'comment_id':args.comment_id,'top':args.top}
+        plan={'action':op,'steps':[{'op':op,'args':payload}]}
+        if args.dry_run:print(json.dumps(plan,ensure_ascii=False,indent=2));return
+        receipt=execute_plan(plan,args.run_id)
+        show(receipt,RUNS/args.run_id/'result.json',args.full_output);return
     if args.command == 'ubmax-pro-status':
         ids = args.project_ids
         if (not 1 <= len(ids) <= 20 or len(set(ids)) != len(ids)

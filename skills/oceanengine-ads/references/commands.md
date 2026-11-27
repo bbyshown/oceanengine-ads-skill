@@ -152,3 +152,37 @@ python3 ads.py --account ACCOUNT --run-id material-pause-unique-001 material-sta
 ```
 
 使用广告实时素材列表里的 `material_id`，一次可传1–20个。网关确认广告属于当前账号/游戏、素材在该广告视频列表内，再调用官方 `v3.0/material/status/update/`。逐项回读 `material_opt_status`，并确认广告开关。恢复素材用 `--status ENABLE`。支持全局 `--dry-run`。状态不一致或部分失败时查看原任务，复用原run-id查询，勿反复编辑广告触发重审。
+
+## 抖音评论管理
+
+评论查询按广告账户读取。`aweme_id` 必须是该账户当前授权的抖音号；日期范围为 YYYY-MM-DD，最多三个月。可限制 `--ad-id` 或 `--item-id`，结果保留平台原始评论字段及 pagination。
+对应官方接口文档：[获取评论列表](https://open.oceanengine.com/labels/7/docs/1754803808580608)、[回复评论](https://open.oceanengine.com/labels/7/docs/1754803971592192)、[隐藏评论](https://open.oceanengine.com/labels/7/docs/1754804147204108)。
+
+```sh
+python3 "$S/scripts/ads.py" --account cz87 aweme-comments --aweme-id 64941333853 \
+  --start-date 2026-11-01 --end-date 2026-11-27 --page 1 --page-size 50
+python3 "$S/scripts/ads.py" aweme-comments --all-configured-accounts --aweme-id 64941333853 \
+  --start-date 2026-11-01 --end-date 2026-11-27
+```
+
+跨配置账户的查询是客户端逐个检查已登记的抖音授权，再分别调用每个 advertiser_id；并非平台提供了以 aweme_id 为主键的全局接口。结果按账户返回；筛选评论后，使用回执中的 advertiser_id 对应账户继续操作。
+
+隐藏评论（平台仅提供隐藏，不支持永久删除）：
+
+```sh
+python3 "$S/scripts/ads.py" --account cz87 --run-id comment-hide-unique-001 \
+  aweme-comment-hide --aweme-id 64941333853 --comment-ids 123456789 --confirm-hide
+```
+
+回复一条评论和置顶/取消置顶：
+
+```sh
+python3 "$S/scripts/ads.py" --account cz87 --run-id comment-reply-unique-001 \
+  aweme-comment-reply --aweme-id 64941333853 --comment-id 123456789 --text '感谢支持！'
+python3 "$S/scripts/ads.py" --account cz87 --run-id comment-pin-unique-001 \
+  aweme-comment-top --aweme-id 64941333853 --comment-id 123456789 --top
+python3 "$S/scripts/ads.py" --account cz87 --run-id comment-unpin-unique-001 \
+  aweme-comment-top --aweme-id 64941333853 --comment-id 123456789 --unpin
+```
+
+写操作先用全局 `--dry-run` 预览；隐藏必须附 `--confirm-hide`，所有变更需稳定唯一的 `--run-id`。网关按具体 advertiser_id 执行并记录审计；成功回执代表平台接受请求，之后重新查询同一账户及日期范围检查 `hide_status` / `is_stick`。如果已注册 OAuth 应用未获评论管理 scope，平台仍会拒绝；这项权限需应用管理员在巨量开放平台申请。

@@ -1,6 +1,6 @@
 ---
 name: oceanengine-ads
-description: 通过已授权的巨量引擎管理网关操作小游戏广告，支持创建与批建、账户切换、预算出价排期调整、启停删除、报表分析及只读监控。适用于已有兼容网关的投放协作，账户和凭证由使用者本地配置。
+description: 通过已授权的巨量引擎管理网关操作小游戏广告，支持创建与批建、账户切换、预算出价排期调整、启停删除、抖音评论管理、报表分析及只读监控。适用于已有兼容网关的投放协作，账户和凭证由使用者本地配置。
 ---
 
 # 巨量引擎游戏投放
@@ -83,3 +83,29 @@ description: 通过已授权的巨量引擎管理网关操作小游戏广告，�
 智擎项目启用/暂停用 `ubmax-pro-status PROJECT_ID --status ENABLE|DISABLE`，明确账户及目标，带稳定run-id。回读opt_status一致后才报告完成。
 
 暂停标准广告中的视频素材用 `material-status PROMOTION_ID --material-ids MID --status DISABLE`，配全局账户与稳定run-id。使用广告内material_id，不向update_ad.video_material_list塞material_opt_status。
+
+## 抖音号评论
+
+评论列表按巨量官方接口的 `advertiser_id` 读取，并用已授权 `aweme_id` 限定视频作者。单账户读取需明确 `--account`；`aweme-comments --all-configured-accounts` 会逐个检查本机连接配置中的广告账户，只汇总当前授权了该抖音号的账户，结果按 advertiser_id 分组。它不是平台单次跨账户查询。
+
+```sh
+python3 "$S/scripts/ads.py" --account cz87 aweme-comments --aweme-id 64941333853 \
+  --start-date 2026-11-01 --end-date 2026-11-27 --page 1 --page-size 50
+python3 "$S/scripts/ads.py" aweme-comments --all-configured-accounts --aweme-id 64941333853 \
+  --start-date 2026-11-01 --end-date 2026-11-27
+```
+
+查询日期必须是 `YYYY-MM-DD`，时间跨度不超过三个月；可用 `--item-id` 或 `--ad-id` 进一步过滤。列表保留平台字段，包括 `comment_id`、`item_id`、`promotion_id`、`text`、`create_time`、`like_count`、`reply_count`、`is_stick` 与 `hide_status`。
+
+隐藏评论使用 `aweme-comment-hide`，它调用平台隐藏接口，**不会永久删除评论**。必须选广告账户、使用稳定 `--run-id` 并带 `--confirm-hide`。回复和置顶/取消置顶也必须选账户及稳定 `--run-id`：
+
+```sh
+python3 "$S/scripts/ads.py" --account cz87 --run-id comment-hide-unique-001 \
+  aweme-comment-hide --aweme-id 64941333853 --comment-ids 123456789 --confirm-hide
+python3 "$S/scripts/ads.py" --account cz87 --run-id comment-reply-unique-001 \
+  aweme-comment-reply --aweme-id 64941333853 --comment-id 123456789 --text '感谢支持！'
+python3 "$S/scripts/ads.py" --account cz87 --run-id comment-pin-unique-001 \
+  aweme-comment-top --aweme-id 64941333853 --comment-id 123456789 --top
+```
+
+支持 `--dry-run` 预览写操作。写回执只报告平台已接受，不代表已读回验证；之后用相同账户、抖音号、日期及过滤条件重新读取列表核实 `hide_status` / `is_stick`。平台应用还需具备评论管理 OAuth scope；scope 缺失时接口会返回平台拒绝，需由应用管理员在巨量开放平台开通，既有抖音授权不等于已授权评论权限。评论回复/隐藏/置顶由 advertiser_id 隔离，修改时必须选择列表结果对应的账户。

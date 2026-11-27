@@ -8,10 +8,10 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 
 import settings
 
-READS={'video_materials','ubmax_pro_create_preview','ubmax_pro_promotions','ubmax_pro_projects','status','inventory','accounts','workbench','projects','promotions','avatar','game_links',
+READS={'aweme_comment_list','video_materials','ubmax_pro_create_preview','ubmax_pro_promotions','ubmax_pro_projects','status','inventory','accounts','workbench','projects','promotions','avatar','game_links',
        'report_config','report','cover','aweme_auth','goals','deep_bid','account_preflight',
        'account_budget','account_profile','change_history','creation_status','discover_accounts','oauth_profile_status'}
-WRITES={'set_material_status','ubmax_pro_set_project_status','ubmax_pro_add_materials','ubmax_pro_new_project','ubmax_pro_delete_projects','new_project','new_ad','new_campaign','resume_creation','create_paused_ad','update_paused_ad',
+WRITES={'aweme_comment_hide','aweme_comment_reply','aweme_comment_top','set_material_status','ubmax_pro_set_project_status','ubmax_pro_add_materials','ubmax_pro_new_project','ubmax_pro_delete_projects','new_project','new_ad','new_campaign','resume_creation','create_paused_ad','update_paused_ad',
         'set_project_status','set_ad_status','set_project_budget','set_ad_budget','set_account_budget','set_account_name',
         'set_project_bid','set_ad_bid','set_project_schedule','set_ad_schedule','set_project_dates',
         'update_ad','delete_ads','delete_projects','upload_image','upload_video','upload_avatar','upload_audio','create_carousel',
